@@ -111,6 +111,11 @@ function drawBackground(){
     ctx.drawImage(columnDeepImg,0,0,W,H);
   }
 
+  // Mechanical column structure overlay.
+  if(columnStructureImg.complete && columnStructureImg.naturalWidth){
+    ctx.drawImage(columnStructureImg,0,0,W,H);
+  }
+
   // Static silica stationary-phase layer with transparent central channel.
   if(silicaBackImg.complete && silicaBackImg.naturalWidth){
     ctx.drawImage(silicaBackImg,0,0,W,H);
