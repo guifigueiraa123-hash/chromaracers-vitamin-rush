@@ -53,11 +53,11 @@ const sceneAssets={
   detector:new Image()
 };
 const sceneAssetSources={
-  deep:'assets/column-deep.png',
-  silica:'assets/silica-back.png',
-  structure:'assets/column-structure.png',
-  flow:'assets/flow-channel.png',
-  detector:'assets/detector-uv-vis.png'
+  deep:'assets/environment/column-deep.png',
+  silica:'assets/environment/silica-back.png',
+  structure:'assets/environment/column-structure.png',
+  flow:'assets/environment/flow-channel.png',
+  detector:'assets/environment/detector-uv-vis.png'
 };
 let assetsReady=false;
 Promise.all(Object.entries(sceneAssets).map(([key,img])=>new Promise((resolve,reject)=>{
