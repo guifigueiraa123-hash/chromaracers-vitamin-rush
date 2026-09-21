@@ -269,10 +269,30 @@ function loop(t){
   if(distance>=500){distance=500;finished=true}
   targetX+=(lanes[lane]-targetX)*Math.min(1,dt*12);
  }
- drawBackground();drawRoad();drawMolecules();obstacles.forEach(drawObstacle);rivals.forEach(drawRival);drawVita();drawHUD();
+ drawBackground();drawMolecules();obstacles.forEach(drawObstacle);rivals.forEach(drawRival);drawVita();drawHUD();
  if(!started)drawStart();
  if(finished){ctx.fillStyle='rgba(7,10,20,.78)';ctx.fillRect(0,0,W,H);ctx.textAlign='center';ctx.fillStyle='#ffd447';ctx.font='bold 38px monospace';ctx.fillText('CHEGADA AO DETECTOR!',W/2,245);ctx.fillStyle='#fff';ctx.font='18px monospace';ctx.fillText('PONTUAÇÃO '+(score+Math.floor(distance)),W/2,285);ctx.fillText('Pressione R para correr novamente',W/2,325);ctx.textAlign='left'}
- requestAnimationFrame(loop);
+ 
+window.addEventListener('error', (e) => {
+  const msg = e?.error?.stack || e?.message || 'Erro JavaScript desconhecido';
+  console.error('[ChromaRacers]', msg);
+  try {
+    ctx.save();
+    ctx.fillStyle = 'rgba(7,10,20,.94)';
+    ctx.fillRect(0,0,W,H);
+    ctx.fillStyle = '#ff6f61';
+    ctx.font = 'bold 22px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('ERRO AO INICIAR O JOGO', W/2, H/2-25);
+    ctx.fillStyle = '#f5f7fa';
+    ctx.font = '13px monospace';
+    ctx.fillText('Abra o console para ver o detalhe.', W/2, H/2+10);
+    ctx.textAlign = 'left';
+    ctx.restore();
+  } catch (_) {}
+});
+
+requestAnimationFrame(loop);
 }
 requestAnimationFrame(loop);
 </script>
