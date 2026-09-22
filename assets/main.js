@@ -594,16 +594,18 @@ Object.entries(CAPTAIN_ANIMS).forEach(([key, def]) => {
 });
 
 const captainMat = new THREE.SpriteMaterial({
-  map: captainTextures.run,
+  map: captainTextures['run-back'],
   transparent: true,
   depthWrite: false,
+  depthTest: true,
 });
 const captain = new THREE.Sprite(captainMat);
 captain.scale.set(3.1, 3.1, 1);
+captain.renderOrder = 2;
 scene.add(captain);
 
-let captainAnim = 'run';
-let captainFrames = CAPTAIN_ANIMS.run.frames;
+let captainAnim = 'run-back';
+let captainFrames = CAPTAIN_ANIMS['run-back'].frames;
 let captainFrame = 0;
 let captainAnimTime = 0;
 let captainLock = 0;
@@ -637,7 +639,7 @@ function tickCaptainAnim(dt, fps = 12) {
     setCaptainFrame(captainFrame);
   }
   if (captainLock <= 0 && ['skid', 'attack', 'fall', 'jump', 'hit'].includes(captainAnim)) {
-    playCaptain('run');
+    playCaptain('run-back');
   }
 }
 
@@ -748,14 +750,14 @@ function updateCaptainVisual(r, dt, boostingPlayer) {
     r.boostPulse -= dt;
     playCaptain('boost');
   } else if (r.d + 12 < state.distance && boostingPlayer) {
-    playCaptain('run-back');
+    playCaptain('run'); // side sprint when being overtaken
   } else if (
     r.speed > GAME_CONFIG.rivalBaseSpeeds[r.speedIndex] * 1.08
     || (boostingPlayer && Math.abs(r.d - state.distance) < 18 && r.d > state.distance)
   ) {
     playCaptain('boost');
   } else {
-    playCaptain('run');
+    playCaptain('run-back'); // rear view — same camera angle as Vita C
   }
   tickCaptainAnim(dt, captainAnim === 'boost' ? 14 : 12);
 }
@@ -885,7 +887,7 @@ function resetRaceEntities() {
     r.speed = GAME_CONFIG.rivalBaseSpeeds[r.speedIndex] * (0.94 + rnd() * 0.1);
     r.laneTimer = 1.5 + i * 0.8;
     r.boostPulse = 0;
-    if (r.isCaptain) playCaptain('run');
+    if (r.isCaptain) playCaptain('run-back');
   });
   obstacles.forEach((o, i) => {
     o.d = 100 + i * 62 + rnd() * 20;
