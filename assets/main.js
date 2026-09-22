@@ -293,11 +293,20 @@ const camera = new THREE.PerspectiveCamera(
   420
 );
 
-const renderer = new THREE.WebGLRenderer({
-  antialias: false,
-  powerPreference: 'high-performance',
-  alpha: false,
-});
+let renderer;
+try {
+  renderer = new THREE.WebGLRenderer({
+    antialias: false,
+    powerPreference: 'high-performance',
+    alpha: false,
+  });
+} catch (err) {
+  const box = document.createElement('div');
+  box.className = 'overlay screen active';
+  box.innerHTML = `<div class="card-panel"><h2>WEBGL INDISPONÍVEL</h2><p>Este dispositivo/navegador não conseguiu criar um contexto WebGL. Tente outro navegador ou atualize os drivers gráficos.</p><p style="color:#8fa0b8;font-size:12px">${escapeHtml(String(err))}</p></div>`;
+  document.body.appendChild(box);
+  throw err;
+}
 renderer.setPixelRatio(Math.min(devicePixelRatio, qualityState.pixelRatioCap));
 renderer.setSize(innerWidth, innerHeight);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
