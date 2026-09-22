@@ -54,10 +54,30 @@ const SECTORS = buildSectors(GAME_CONFIG.raceDistance);
 const LANES = [-1, 0, 1];
 
 const RIVALS_DEF = [
-  { name: 'Captain Caffeine', color: 0xff7b31, emissive: 0x5a2208, lane: -1, speedIndex: 0 },
+  {
+    name: 'Captain Caffeine',
+    color: 0xff7b31,
+    emissive: 0x5a2208,
+    lane: -1,
+    speedIndex: 0,
+    spriteKey: 'captain',
+  },
   { name: 'Lady Paraben', color: 0xd9368a, emissive: 0x4a1030, lane: 1, speedIndex: 1 },
   { name: 'Aroma', color: 0x5de5ff, emissive: 0x0a3a4a, lane: 0, speedIndex: 2 },
 ];
+
+/** Captain Caffeine production sheets (64×64 frames, horizontal). */
+const CAPTAIN_SHEETS = {
+  run: { url: './assets/captain-caffeine-run.png', frames: 8 },
+  'run-back': { url: './assets/captain-caffeine-run-back.png', frames: 8 },
+  boost: { url: './assets/captain-caffeine-boost.png', frames: 7 },
+  attack: { url: './assets/captain-caffeine-attack.png', frames: 8 },
+  victory: { url: './assets/captain-caffeine-victory.png', frames: 4 },
+  idle: { url: './assets/captain-caffeine-idle.png', frames: 4 },
+  jump: { url: './assets/captain-caffeine-jump.png', frames: 4 },
+  fall: { url: './assets/captain-caffeine-fall.png', frames: 4 },
+  skid: { url: './assets/captain-caffeine-skid.png', frames: 4 },
+};
 
 // ---------------------------------------------------------------------------
 // Safe storage
@@ -565,24 +585,73 @@ function setVitaFrame(n) {
 }
 
 // ---------------------------------------------------------------------------
-// Rivals
-const rivals = RIVALS_DEF.map((def, i) => {
-  const g = new THREE.Group();
-  const body = new THREE.Mesh(
-    geo.sphereM,
-    new THREE.MeshStandardMaterial({
-      color: def.color, emissive: def.emissive, emissiveIntensity: 0.35, roughness: 0.55, metalness: 0.15,
-    })
-  );
-  body.scale.set(0.85, 0.95, 0.85);
-  const core = new THREE.Mesh(geo.sphereS, new THREE.MeshBasicMaterial({ color: 0xffffff }));
-  core.scale.setScalar(0.28);
-  const orbit = new THREE.Mesh(geo.sphereS, new THREE.MeshBasicMaterial({ color: def.color }));
-  orbit.scale.setScalar(0.18);
-  orbit.position.set(0.7, 0.2, 0);
-  g.add(body, core, orbit);
+// Sprite-sheet animator (Captain Caffeine)
+function loadAnimSheet(url, frames) {
+  const tex = texLoader.load(url);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.magFilter = THREE.NearestFilter;
+  tex.minFilter = THREE.NearestFilter;
+  tex.wrapS = THREE.ClampToEdgeWrapping;
+  tex.wrapT = THREE.ClampToEdgeWrapping;
+  tex.repeat.set(1 / frames, 1);
+  tex.offset.set(0, 0);
+  return { tex, frames };
+}
 
-  // Name sprite via canvas
+function createSheetAnimator(sheetDefs, initial = 'run') {
+  const sheets = {};
+  Object.entries(sheetDefs).forEach(([key, def]) => {
+    sheets[key] = loadAnimSheet(def.url, def.frames);
+  });
+  const first = sheets[initial] || sheets.run;
+  const mat = new THREE.SpriteMaterial({
+    map: first.tex,
+    transparent: true,
+    depthWrite: false,
+  });
+  const sprite = new THREE.Sprite(mat);
+  sprite.scale.set(3.15, 3.15, 1);
+  return {
+    sprite,
+    sheets,
+    anim: initial,
+    frame: 0,
+    timer: 0,
+    lock: 0, // seconds to keep one-shot anim before returning to run
+    setAnim(name, lock = 0) {
+      if (!this.sheets[name]) return;
+      if (this.anim === name && lock <= 0) return;
+      this.anim = name;
+      this.frame = 0;
+      this.timer = 0;
+      this.lock = lock;
+      const sheet = this.sheets[name];
+      mat.map = sheet.tex;
+      sheet.tex.repeat.set(1 / sheet.frames, 1);
+      sheet.tex.offset.x = 0;
+      mat.needsUpdate = true;
+    },
+    update(dt, fps = 12) {
+      if (this.lock > 0) {
+        this.lock = Math.max(0, this.lock - dt);
+      }
+      const sheet = this.sheets[this.anim];
+      if (!sheet) return;
+      this.timer += dt;
+      const frameDur = 1 / fps;
+      if (this.timer >= frameDur) {
+        this.timer = 0;
+        this.frame = (this.frame + 1) % sheet.frames;
+        sheet.tex.offset.x = this.frame / sheet.frames;
+      }
+      if (this.lock <= 0 && (this.anim === 'skid' || this.anim === 'attack' || this.anim === 'fall' || this.anim === 'jump')) {
+        this.setAnim('run');
+      }
+    },
+  };
+}
+
+function makeRivalNameLabel(name) {
   const canvas = document.createElement('canvas');
   canvas.width = 256;
   canvas.height = 64;
@@ -593,25 +662,100 @@ const rivals = RIVALS_DEF.map((def, i) => {
   ctx.font = 'bold 18px monospace';
   ctx.fillStyle = '#F5F7FA';
   ctx.textAlign = 'center';
-  ctx.fillText(def.name, 128, 38);
+  ctx.fillText(name, 128, 38);
   const labelTex = new THREE.CanvasTexture(canvas);
   const label = new THREE.Sprite(new THREE.SpriteMaterial({ map: labelTex, transparent: true, depthWrite: false }));
   label.scale.set(3.2, 0.8, 1);
-  label.position.y = 1.6;
-  g.add(label);
+  label.position.y = 1.7;
+  return label;
+}
 
+// ---------------------------------------------------------------------------
+// Rivals
+const rivals = RIVALS_DEF.map((def, i) => {
+  const g = new THREE.Group();
+  let animator = null;
+  let orbit = null;
+
+  if (def.spriteKey === 'captain') {
+    animator = createSheetAnimator(CAPTAIN_SHEETS, 'idle');
+    g.add(animator.sprite);
+  } else {
+    const body = new THREE.Mesh(
+      geo.sphereM,
+      new THREE.MeshStandardMaterial({
+        color: def.color, emissive: def.emissive, emissiveIntensity: 0.35, roughness: 0.55, metalness: 0.15,
+      })
+    );
+    body.scale.set(0.85, 0.95, 0.85);
+    const core = new THREE.Mesh(geo.sphereS, new THREE.MeshBasicMaterial({ color: 0xffffff }));
+    core.scale.setScalar(0.28);
+    orbit = new THREE.Mesh(geo.sphereS, new THREE.MeshBasicMaterial({ color: def.color }));
+    orbit.scale.setScalar(0.18);
+    orbit.position.set(0.7, 0.2, 0);
+    g.add(body, core, orbit);
+  }
+
+  g.add(makeRivalNameLabel(def.name));
   scene.add(g);
   return {
     ...def,
     g,
     orbit,
+    animator,
     d: 80 + i * 55,
     lane: def.lane,
     laneF: def.lane,
+    prevLane: def.lane,
     speed: GAME_CONFIG.rivalBaseSpeeds[def.speedIndex],
     laneTimer: 2 + i,
+    boostPulse: 0,
   };
 });
+
+function updateCaptainAnim(r, dt, boostingPlayer) {
+  if (!r.animator) return;
+  const anim = r.animator;
+
+  if (state.mode === 'menu') {
+    anim.setAnim('idle');
+    anim.update(dt, 8);
+    return;
+  }
+  if (state.mode === 'results' || state.finished) {
+    const captainAhead = r.d >= RACE_DISTANCE - 6 && r.d >= state.distance;
+    anim.setAnim(captainAhead || r.d > state.distance ? 'victory' : 'idle');
+    anim.update(dt, 8);
+    return;
+  }
+  if (state.mode !== 'race' && state.mode !== 'countdown') {
+    anim.setAnim('idle');
+    anim.update(dt, 8);
+    return;
+  }
+
+  // One-shot locks take priority
+  if (anim.lock > 0) {
+    anim.update(dt, anim.anim === 'attack' ? 14 : 12);
+    return;
+  }
+
+  const laneDelta = Math.abs(r.lane - r.laneF);
+  if (laneDelta > 0.35 && anim.anim !== 'skid') {
+    anim.setAnim('skid', 0.35);
+  } else if (r.boostPulse > 0) {
+    r.boostPulse -= dt;
+    anim.setAnim('boost');
+  } else if (r.d + 12 < state.distance && boostingPlayer) {
+    // Being overtaken — run-back / struggle
+    anim.setAnim('run-back');
+  } else if (r.speed > GAME_CONFIG.rivalBaseSpeeds[r.speedIndex] * 1.08 || (boostingPlayer && Math.abs(r.d - state.distance) < 18 && r.d > state.distance)) {
+    anim.setAnim('boost');
+  } else {
+    anim.setAnim('run');
+  }
+  anim.update(dt, anim.anim === 'boost' ? 14 : 12);
+}
 
 // Obstacles pool
 const OBSTACLE_TYPES = ['silica', 'bubble', 'concentration', 'interferent', 'cluster'];
@@ -735,8 +879,11 @@ function resetRaceEntities() {
     r.d = 70 + i * 48 + rnd() * 20;
     r.lane = RIVALS_DEF[i].lane;
     r.laneF = r.lane;
+    r.prevLane = r.lane;
     r.speed = GAME_CONFIG.rivalBaseSpeeds[r.speedIndex] * (0.94 + rnd() * 0.1);
     r.laneTimer = 1.5 + i * 0.8;
+    r.boostPulse = 0;
+    if (r.animator) r.animator.setAnim('run');
   });
   obstacles.forEach((o, i) => {
     o.d = 100 + i * 62 + rnd() * 20;
@@ -892,21 +1039,26 @@ function updateRace(dt) {
     r.laneTimer -= dt;
     if (r.laneTimer <= 0) {
       r.laneTimer = 1.2 + rnd() * 2.4;
-      // try avoid player's lane or chase
       const options = LANES.filter((l) => l !== state.lane || rnd() > 0.4);
       r.lane = options[Math.floor(rnd() * options.length)] ?? r.lane;
+      if (r.animator && rnd() > 0.55) r.boostPulse = 0.7 + rnd() * 0.6;
+      if (r.animator && rnd() > 0.82) {
+        r.animator.setAnim('attack', 0.55);
+      }
     }
     r.laneF += (r.lane - r.laneF) * Math.min(1, dt * 4);
-    const pace = r.speed * (boosting && r.d < state.distance + 8 ? 0.92 : 1);
+    const pace = r.speed * (boosting && r.d < state.distance + 8 ? 0.92 : 1) * (r.boostPulse > 0 ? 1.12 : 1);
     r.d += pace * dt;
-    // keep within race bubble relative to player
     if (r.d > state.distance + 160) r.d = state.distance - 25 - i * 15;
     if (r.d < state.distance - 80) r.d = state.distance + 40 + i * 20;
     r.d = Math.min(r.d, RACE_DISTANCE - 5);
-    worldAt(r.d, r.laneF, 0.95, r.g.position);
-    r.orbit.rotation.y += dt * 2.5;
-    const prox = THREE.MathUtils.clamp(1.1 - Math.abs(r.d - state.distance) / 90, 0.55, 1.35);
+    worldAt(r.d, r.laneF, r.animator ? 1.05 : 0.95, r.g.position);
+    if (r.orbit) r.orbit.rotation.y += dt * 2.5;
+    const prox = r.animator
+      ? THREE.MathUtils.clamp(1.15 - Math.abs(r.d - state.distance) / 110, 0.75, 1.4)
+      : THREE.MathUtils.clamp(1.1 - Math.abs(r.d - state.distance) / 90, 0.55, 1.35);
     r.g.scale.setScalar(prox);
+    updateCaptainAnim(r, dt, boosting);
   });
 
   // Obstacles
@@ -1068,7 +1220,22 @@ function animate() {
       vitaFrame = (vitaFrame + 1) % 8;
       setVitaFrame(vitaFrame);
     }
+    rivals.forEach((r) => {
+      worldAt(r.d, r.laneF, r.animator ? 1.05 : 0.95, r.g.position);
+      updateCaptainAnim(r, dt, false);
+    });
     placeDetector();
+  }
+  if (state.mode === 'countdown' || state.mode === 'results') {
+    rivals.forEach((r) => {
+      worldAt(r.d, r.laneF, r.animator ? 1.05 : 0.95, r.g.position);
+      if (state.mode === 'countdown' && r.animator) {
+        r.animator.setAnim('idle');
+        r.animator.update(dt, 8);
+      } else {
+        updateCaptainAnim(r, dt, false);
+      }
+    });
   }
   renderer.render(scene, camera);
 }
@@ -1186,4 +1353,4 @@ state.mode = 'menu';
 animate();
 
 // Expose config for debugging / easy distance change verification
-window.CHROMARACERS = { GAME_CONFIG, RACE_DISTANCE, SECTORS, state, Storage };
+window.CHROMARACERS = { GAME_CONFIG, RACE_DISTANCE, SECTORS, state, Storage, rivals };
