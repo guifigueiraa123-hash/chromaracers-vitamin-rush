@@ -12,11 +12,13 @@ chromaracers-vitamin-rush/
     ├── main.js
     ├── styles.css
     ├── three.module.js
+    ├── three.core.js          # dependência local do Three r180 (sem CDN)
     ├── vita-c-run-final-spritesheet.png
     ├── detector-uv-vis.png
     └── silica-back.png
 ```
 
+> `three.module.js` importa `./three.core.js` localmente. Ambos devem ser publicados juntos.
 ## Executar localmente
 
 Serve a pasta raiz por HTTP (módulos ES não abrem via `file://`):
