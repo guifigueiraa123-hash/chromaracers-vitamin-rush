@@ -3,417 +3,149 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
-<title>ChromaRacers // Vitamin Rush — Three.js Prototype</title>
-<style>
-  :root { --cyan:#5de5ff; --navy:#081020; --orange:#ff9b32; --green:#43c95a; }
-  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
-  html,body { margin:0; width:100%; height:100%; overflow:hidden; background:#050913; font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; }
-  body { touch-action:none; }
-  #game { position:fixed; inset:0; }
-  canvas { display:block; width:100%; height:100%; }
-  #hud {
-    position:fixed; left:50%; top:max(10px, env(safe-area-inset-top));
-    transform:translateX(-50%); width:min(960px,calc(100% - 24px));
-    display:grid; grid-template-columns:1fr auto auto auto 1fr; gap:10px;
-    padding:9px 12px; color:#dffaff; background:rgba(4,12,25,.72);
-    border:1px solid rgba(93,229,255,.55); box-shadow:0 0 18px rgba(0,210,255,.14);
-    backdrop-filter:blur(5px); font-size:12px; letter-spacing:.04em; z-index:5;
-  }
-  #hud b { color:var(--cyan); font-weight:700; }
-  #hud .right { text-align:right; }
-  #message {
-    position:fixed; left:50%; top:50%; transform:translate(-50%,-50%);
-    width:min(650px,calc(100% - 34px)); padding:26px; text-align:center;
-    color:#eafcff; background:rgba(4,10,22,.9); border:1px solid var(--cyan);
-    box-shadow:0 0 35px rgba(0,220,255,.2); z-index:10;
-  }
-  #message h1 { margin:0 0 8px; color:#ffd447; font-size:clamp(22px,5vw,42px); letter-spacing:.06em; }
-  #message p { margin:7px 0; color:#b8c8d8; line-height:1.45; }
-  #startBtn {
-    margin-top:15px; border:2px solid var(--cyan); background:#0a2035; color:#fff;
-    padding:12px 22px; border-radius:10px; font:700 15px inherit; cursor:pointer;
-  }
-  #controls {
-    position:fixed; left:50%; bottom:max(14px,env(safe-area-inset-bottom));
-    transform:translateX(-50%); display:flex; gap:10px; z-index:6;
-  }
-  #controls button {
-    min-width:108px; padding:13px 14px; border-radius:12px; border:2px solid var(--cyan);
-    background:rgba(4,15,29,.82); color:#fff; font:700 14px inherit;
-  }
-  #controls button:active { transform:scale(.96); background:#10344d; }
-  #legend {
-    position:fixed; left:50%; bottom:86px; transform:translateX(-50%);
-    color:#a9bdc9; font-size:11px; text-align:center; z-index:5; opacity:.85;
-  }
-  @media (min-width:800px) {
-    #controls { opacity:.18; transition:opacity .2s; }
-    #controls:hover { opacity:1; }
-  }
-  @media (max-width:620px) {
-    #hud { grid-template-columns:1fr 1fr 1fr; font-size:10px; }
-    #hud .hide-mobile { display:none; }
-    #controls button { min-width:92px; padding:12px 8px; }
-    #legend { bottom:82px; }
-  }
-</style>
+<meta name="theme-color" content="#17233D">
+<meta name="description" content="ChromaRacers: Vitamin Rush — corrida arcade dentro de uma coluna cromatográfica.">
+<title>CHROMARACERS // VITAMIN RUSH</title>
+<link rel="stylesheet" href="./assets/styles.css">
 </head>
 <body>
-<div id="game"></div>
-<div id="hud">
-  <span>DIST <b id="dist">0 m</b></span>
-  <span>POS <b id="pos">1/4</b></span>
-  <span>ITEM <b id="item">—</b></span>
-  <span>SPD <b id="speed">RUN</b></span>
-  <span class="right hide-mobile">FLOW <b id="flowState">STABLE</b></span>
-</div>
-<div id="legend">← → trocar faixa · ESPAÇO usar item/boost · deslize no celular</div>
-<div id="controls">
-  <button id="left">◀ FAIXA</button>
-  <button id="itemBtn">ITEM</button>
-  <button id="right">FAIXA ▶</button>
-</div>
-<div id="message">
-  <h1>CHROMARACERS</h1>
-  <p>VITAMIN RUSH // THREE.JS</p>
-  <p>Uma coluna cromatográfica real em 3D: curvas, subidas, descidas e fluxo.</p>
-  <button id="startBtn">INICIAR CORRIDA</button>
+<div id="app">
+  <div id="game" aria-hidden="true"></div>
+
+  <!-- Race HUD -->
+  <div id="hud" class="panel-hidden" aria-live="polite">
+    <div class="hud-row">
+      <div class="hud-cell"><span class="hud-label">DISTANCE</span><b id="hudDist">0 m</b></div>
+      <div class="hud-cell"><span class="hud-label">POSITION</span><b id="hudPos">4/4</b></div>
+      <div class="hud-cell"><span class="hud-label">SCORE</span><b id="hudScore">0</b></div>
+      <div class="hud-cell"><span class="hud-label">ITEM</span><b id="hudItem">—</b></div>
+      <div class="hud-cell"><span class="hud-label">BOOST</span><b id="hudBoost">OFF</b></div>
+      <div class="hud-cell"><span class="hud-label">SPEED</span><b id="hudSpeed">0</b></div>
+    </div>
+    <div class="sector-bar"><span id="hudSector">SECTOR 1 — INTRODUÇÃO</span><div class="progress-track"><div id="hudProgress" class="progress-fill"></div></div></div>
+  </div>
+
+  <!-- Countdown -->
+  <div id="countdown" class="overlay panel-hidden" aria-live="assertive">
+    <div id="countdownValue" class="countdown-value">3</div>
+  </div>
+
+  <!-- Main Menu -->
+  <div id="screen-menu" class="overlay screen active">
+    <div class="menu-atmosphere" aria-hidden="true"></div>
+    <div class="menu-frame">
+      <p class="menu-eyebrow">SGI WEEK · ANALYTICAL ARCADE</p>
+      <h1 class="menu-title">CHROMARACERS</h1>
+      <h2 class="menu-subtitle">VITAMIN RUSH</h2>
+      <p class="menu-tagline">THE CHROMATOGRAPHY RACE</p>
+      <p class="menu-blurb">Corra com Vita C pelo fluxo da fase móvel. Ultrapasse rivais, evite agregados e alcance o detector UV/Vis.</p>
+      <div class="menu-actions">
+        <button class="btn btn-primary" id="btnPlay" type="button">PLAY</button>
+        <button class="btn" id="btnLeaderboard" type="button">LEADERBOARD</button>
+        <button class="btn" id="btnHowTo" type="button">HOW TO PLAY</button>
+        <button class="btn" id="btnSettings" type="button">SETTINGS</button>
+      </div>
+      <p class="menu-hint">← → / A D trocar faixa · ESPAÇO item · R reiniciar</p>
+    </div>
+  </div>
+
+  <!-- How to Play -->
+  <div id="screen-howto" class="overlay screen panel-hidden">
+    <div class="card-panel">
+      <h2>HOW TO PLAY</h2>
+      <ul class="howto-list">
+        <li><strong>Objetivo:</strong> percorrer <span id="howtoDistance">1500</span> m dentro da coluna e chegar ao detector UV/Vis.</li>
+        <li><strong>Faixas:</strong> três fluxos de fase móvel. Troque de lane para ultrapassar e desviar.</li>
+        <li><strong>Rivais:</strong> Captain Caffeine, Lady Paraben e Aroma disputam a corrida.</li>
+        <li><strong>Obstáculos:</strong> agregados de sílica, bolhas e zonas de concentração.</li>
+        <li><strong>Itens:</strong> colete moléculas energéticas e use com ESPAÇO / botão ITEM para boost.</li>
+        <li><strong>Desktop:</strong> ← → ou A D · Espaço · R</li>
+        <li><strong>Mobile:</strong> swipe horizontal + botões touch.</li>
+      </ul>
+      <button class="btn btn-primary" data-back="menu" type="button">VOLTAR</button>
+    </div>
+  </div>
+
+  <!-- Settings -->
+  <div id="screen-settings" class="overlay screen panel-hidden">
+    <div class="card-panel">
+      <h2>SETTINGS</h2>
+      <label class="setting-row">Qualidade
+        <select id="settingQuality">
+          <option value="auto">Auto</option>
+          <option value="high">Alta</option>
+          <option value="medium">Média</option>
+          <option value="low">Baixa</option>
+        </select>
+      </label>
+      <label class="setting-row">Áudio
+        <input type="checkbox" id="settingAudio" checked>
+      </label>
+      <label class="setting-row">Partículas reduzidas
+        <input type="checkbox" id="settingFewerParticles">
+      </label>
+      <p class="setting-note">Áudio preparado (música/efeitos). Sem arquivos externos obrigatórios nesta versão.</p>
+      <button class="btn btn-primary" data-back="menu" type="button">VOLTAR</button>
+    </div>
+  </div>
+
+  <!-- Leaderboard -->
+  <div id="screen-leaderboard" class="overlay screen panel-hidden">
+    <div class="card-panel wide">
+      <h2>CHROMARACERS · LEADERBOARD</h2>
+      <p class="lb-sub">TOP 10 · localStorage (sem servidor)</p>
+      <div id="leaderboardList" class="lb-list"></div>
+      <div class="row-actions">
+        <button class="btn" id="btnClearLb" type="button">LIMPAR</button>
+        <button class="btn btn-primary" data-back="menu" type="button">MENU</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Results -->
+  <div id="screen-results" class="overlay screen panel-hidden">
+    <div class="card-panel wide">
+      <h2>CHROMATOGRAPHY COMPLETE</h2>
+      <p class="result-tag" id="resultTag">UV / VIS DETECTED</p>
+      <div class="stats-grid">
+        <div><span>DISTANCE</span><b id="resDist">1500 m</b></div>
+        <div><span>TIME</span><b id="resTime">00:00.00</b></div>
+        <div><span>SCORE</span><b id="resScore">0</b></div>
+        <div><span>POSITION</span><b id="resPos">1st</b></div>
+        <div><span>MAX SPEED</span><b id="resMaxSpd">0</b></div>
+        <div><span>BOOSTS</span><b id="resBoosts">0</b></div>
+        <div><span>OBSTACLES AVOIDED</span><b id="resAvoid">0</b></div>
+      </div>
+      <div id="saveBlock" class="save-block">
+        <label>NOME DO JOGADOR
+          <input id="playerName" maxlength="16" placeholder="SEU NOME" autocomplete="nickname">
+        </label>
+        <button class="btn btn-primary" id="btnSaveScore" type="button">SAVE SCORE</button>
+      </div>
+      <p id="saveStatus" class="save-status"></p>
+      <div class="row-actions">
+        <button class="btn btn-primary" id="btnPlayAgain" type="button">PLAY AGAIN</button>
+        <button class="btn" id="btnResultLb" type="button">LEADERBOARD</button>
+        <button class="btn" id="btnResultMenu" type="button">MAIN MENU</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Mobile controls -->
+  <div id="mobileControls" class="panel-hidden">
+    <button type="button" id="btnLeft" aria-label="Faixa esquerda">◀</button>
+    <button type="button" id="btnItem" aria-label="Usar item">ITEM</button>
+    <button type="button" id="btnRight" aria-label="Faixa direita">▶</button>
+  </div>
 </div>
 
 <script type="importmap">
 {
   "imports": {
-    "three": "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js"
+    "three": "./assets/three.module.js"
   }
 }
 </script>
-<script type="module">
-import * as THREE from 'three';
-
-const mount = document.getElementById('game');
-const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x050913);
-scene.fog = new THREE.FogExp2(0x071326, 0.012);
-
-const camera = new THREE.PerspectiveCamera(66, innerWidth/innerHeight, 0.05, 500);
-camera.position.set(0, 3, 8);
-
-const renderer = new THREE.WebGLRenderer({antialias:false, powerPreference:'high-performance'});
-renderer.setPixelRatio(Math.min(devicePixelRatio, 1.6));
-renderer.setSize(innerWidth, innerHeight);
-renderer.outputColorSpace = THREE.SRGBColorSpace;
-mount.appendChild(renderer.domElement);
-
-// ---------- Track: real 3D spline ----------
-const trackPoints = [
-  [0,0,0],[0,0,-20],[2,1,-45],[7,3,-68],[11,4,-92],
-  [7,3,-118],[0,1,-142],[-8,-1,-165],[-13,-3,-188],
-  [-9,-1,-212],[-2,2,-235],[6,4,-260],[13,5,-286],
-  [9,3,-310],[0,0,-335],[-7,-2,-360],[-12,-3,-385],
-  [-7,-1,-410],[2,2,-435],[8,3,-460],[4,1,-485],[0,0,-510]
-].map(p=>new THREE.Vector3(p[0],p[1],p[2]));
-const curve = new THREE.CatmullRomCurve3(trackPoints, false, 'catmullrom', 0.45);
-
-const TRACK_LEN = 510;
-const LANES = [-1,0,1];
-const LANE_GAP = 2.15;
-const clock = new THREE.Clock();
-
-function frameAt(t) {
-  t = THREE.MathUtils.clamp(t,0,0.9999);
-  const p = curve.getPointAt(t);
-  const tangent = curve.getTangentAt(t).normalize();
-  const up = new THREE.Vector3(0,1,0);
-  let side = new THREE.Vector3().crossVectors(up,tangent).normalize();
-  if (side.lengthSq() < .1) side.set(1,0,0);
-  const trueUp = new THREE.Vector3().crossVectors(tangent,side).normalize();
-  return {p,tangent,side,trueUp};
-}
-function worldAt(distance, lane=0, lift=0) {
-  const t = THREE.MathUtils.clamp(distance/TRACK_LEN,0,0.999);
-  const f = frameAt(t);
-  return f.p.clone().addScaledVector(f.side, lane*LANE_GAP).addScaledVector(f.trueUp, lift);
-}
-
-// ---------- Column environment ----------
-const env = new THREE.Group();
-scene.add(env);
-
-const silicaMat = new THREE.MeshStandardMaterial({
-  color:0x4d68d9, emissive:0x192f9b, emissiveIntensity:0.42,
-  roughness:.82, metalness:.05
-});
-const silicaPurple = new THREE.MeshStandardMaterial({
-  color:0x8b5eea, emissive:0x3c1d72, emissiveIntensity:.3, roughness:.85
-});
-const ringMat = new THREE.MeshStandardMaterial({
-  color:0x273e67, emissive:0x0a3764, emissiveIntensity:.7, metalness:.8, roughness:.35
-});
-const cyanMat = new THREE.MeshBasicMaterial({color:0x39eaff, transparent:true, opacity:.78});
-const orangeMat = new THREE.MeshBasicMaterial({color:0xffa126, transparent:true, opacity:.9});
-
-const samples = 56;
-for(let i=0;i<samples;i++){
-  const d = i/(samples-1)*TRACK_LEN;
-  const f = frameAt(d/TRACK_LEN);
-  const ring = new THREE.Group();
-  ring.position.copy(f.p);
-  ring.quaternion.setFromUnitVectors(new THREE.Vector3(0,0,1), f.tangent);
-
-  const torus = new THREE.Mesh(new THREE.TorusGeometry(11.7,0.22,7,28), ringMat);
-  torus.rotation.x = Math.PI/2;
-  ring.add(torus);
-
-  const inner = new THREE.Mesh(new THREE.TorusGeometry(9.7,0.07,5,28), cyanMat);
-  inner.rotation.x = Math.PI/2;
-  ring.add(inner);
-  env.add(ring);
-}
-
-// Silica spheres around the inside walls. Reuse deterministic pseudo-random placement.
-let seed = 7;
-function rnd(){ seed=(seed*1664525+1013904223)>>>0; return seed/4294967296; }
-for(let i=0;i<260;i++){
-  const d = 8 + rnd()*480;
-  const t=d/TRACK_LEN;
-  const f=frameAt(t);
-  const angle=rnd()*Math.PI*2;
-  const radius=9.1 + rnd()*1.6;
-  const y=Math.sin(angle)*radius;
-  const x=Math.cos(angle)*radius;
-  const p=f.p.clone().addScaledVector(f.side,x).addScaledVector(f.trueUp,y);
-  const s=.25+rnd()*.75;
-  const bead=new THREE.Mesh(new THREE.SphereGeometry(s,7,5), rnd()>.68?silicaPurple:silicaMat);
-  bead.position.copy(p);
-  bead.scale.y=.78;
-  env.add(bead);
-}
-
-// Flow channels: actual 3D tubes following the same spline.
-const flowGroup = new THREE.Group();
-scene.add(flowGroup);
-for(const lane of LANES){
-  const pts=[];
-  for(let i=0;i<=120;i++) pts.push(worldAt(i/120*TRACK_LEN,lane,0.15));
-  const c=new THREE.CatmullRomCurve3(pts,false,'catmullrom',.15);
-  const tube=new THREE.Mesh(
-    new THREE.TubeGeometry(c,220,.055,5,false),
-    new THREE.MeshBasicMaterial({color:lane===0?0x7cffff:0x35cfff,transparent:true,opacity:.8})
-  );
-  flowGroup.add(tube);
-  const glow=new THREE.Mesh(
-    new THREE.TubeGeometry(c,160,.14,5,false),
-    new THREE.MeshBasicMaterial({color:0x1ceaff,transparent:true,opacity:.09,blending:THREE.AdditiveBlending})
-  );
-  flowGroup.add(glow);
-}
-
-// Flow particles.
-const flowParticles=[];
-for(let i=0;i<95;i++){
-  const lane=LANES[i%3];
-  const m=new THREE.Mesh(new THREE.SphereGeometry(.06+rnd()*.08,5,4), new THREE.MeshBasicMaterial({color:i%7===0?0xffd447:0x62edff}));
-  flowGroup.add(m);
-  flowParticles.push({mesh:m, lane, offset:rnd()*TRACK_LEN, speed:10+rnd()*14});
-}
-
-// Detector at finish.
-const detectorTex=new THREE.TextureLoader().load('assets/detector-uv-vis.png');
-detectorTex.colorSpace=THREE.SRGBColorSpace;
-const detector=new THREE.Sprite(new THREE.SpriteMaterial({map:detectorTex,transparent:true,depthWrite:false}));
-detector.scale.set(11,7.2,1);
-detector.position.copy(worldAt(496,0,2.6));
-scene.add(detector);
-
-// ---------- Player ----------
-const vitaTex=new THREE.TextureLoader().load('assets/vita-c-run-final-spritesheet.png');
-vitaTex.colorSpace=THREE.SRGBColorSpace;
-vitaTex.magFilter=THREE.NearestFilter;
-vitaTex.minFilter=THREE.NearestFilter;
-vitaTex.wrapS=THREE.ClampToEdgeWrapping;
-const vitaMat=new THREE.SpriteMaterial({map:vitaTex,transparent:true,depthWrite:false});
-const vita=new THREE.Sprite(vitaMat);
-vita.scale.set(2.6,2.6,1);
-scene.add(vita);
-
-let frame=0, animTime=0;
-function setVitaFrame(n){
-  vitaTex.offset.x=n/8;
-  vitaTex.repeat.set(1/8,1);
-}
-setVitaFrame(0);
-
-// ---------- Rivals / gameplay objects ----------
-const rivalColors=[0xff4f81,0x64e7ff,0xffd447];
-const rivals=[];
-for(let i=0;i<3;i++){
-  const g=new THREE.Group();
-  const body=new THREE.Mesh(new THREE.SphereGeometry(.7,8,6),new THREE.MeshStandardMaterial({
-    color:rivalColors[i],emissive:rivalColors[i],emissiveIntensity:.18,roughness:.6
-  }));
-  const core=new THREE.Mesh(new THREE.SphereGeometry(.25,7,5),new THREE.MeshBasicMaterial({color:0xffffff}));
-  g.add(body,core);
-  scene.add(g);
-  rivals.push({g,lane:i-1,d:35+i*18,speed:15+i*.8});
-}
-
-// Chromatography obstacles: silica aggregate + concentration bubbles.
-const obstacles=[];
-for(let i=0;i<13;i++){
-  const g=new THREE.Group();
-  const mat=i%3===0?new THREE.MeshStandardMaterial({color:0x9a65ff,emissive:0x3a1c77,emissiveIntensity:.45}):
-                     new THREE.MeshStandardMaterial({color:0x2bd9ef,emissive:0x0a5c76,emissiveIntensity:.35});
-  const core=new THREE.Mesh(new THREE.IcosahedronGeometry(.65,1),mat);
-  g.add(core);
-  scene.add(g);
-  obstacles.push({g,lane:LANES[i%3],d:55+i*32});
-}
-
-const pickups=[];
-for(let i=0;i<16;i++){
-  const g=new THREE.Mesh(new THREE.SphereGeometry(.36,7,5),
-    new THREE.MeshBasicMaterial({color:i%2?0xffd447:0x59f2ff,transparent:true,opacity:.95}));
-  scene.add(g);
-  pickups.push({g,lane:LANES[(i+1)%3],d:32+i*29});
-}
-
-// ---------- State ----------
-const state={
-  running:false, finished:false, distance:0, lane:0, item:null, boost:0,
-  speed:20, score:0, last:performance.now()
-};
-
-function laneMove(dir){ state.lane=THREE.MathUtils.clamp(state.lane+dir,-1,1); }
-function useItem(){
-  if(state.item){ state.boost=3.0; state.item=null; }
-  else if(state.boost<=0){ state.boost=1.6; }
-}
-function start(){
-  state.running=true; state.finished=false; state.distance=0; state.lane=0; state.item=null; state.boost=0; state.score=0;
-  document.getElementById('message').style.display='none';
-  rivals.forEach((r,i)=>{r.d=35+i*18;r.lane=i-1;});
-  obstacles.forEach((o,i)=>{o.d=55+i*32;});
-  pickups.forEach((p,i)=>{p.d=32+i*29;});
-}
-function finish(){
-  state.running=false; state.finished=true;
-  document.querySelector('#message h1').textContent='UV/VIS — CORRIDA CONCLUÍDA';
-  document.querySelector('#message p').textContent='Distância 500 m · Score '+Math.floor(state.score);
-  document.querySelector('#startBtn').textContent='CORRER NOVAMENTE';
-  document.getElementById('message').style.display='block';
-}
-
-function projectEntity(obj,d,lane,lift=0){
-  const p=worldAt(d,lane,lift);
-  obj.position.copy(p);
-}
-
-function updateWorld(dt){
-  if(!state.running) return;
-  const flowBoost=state.boost>0?1.55:1;
-  state.speed=20*flowBoost;
-  state.distance+=state.speed*dt;
-  state.score+=dt*100;
-  if(state.boost>0) state.boost-=dt;
-
-  // Player follows track and stays visually dominant in lower frame.
-  const playerPos=worldAt(state.distance,state.lane,1.0);
-  vita.position.copy(playerPos);
-
-  // Move sprite slightly toward camera-facing orientation by placing it above track.
-  vita.position.y += .35;
-
-  animTime+=dt;
-  if(animTime>.08){ animTime=0; frame=(frame+1)%8; setVitaFrame(frame); }
-
-  // Rivals approach/advance.
-  rivals.forEach((r,i)=>{
-    r.d += r.speed*dt;
-    if(r.d>state.distance+90) r.d=state.distance-20-i*12;
-    projectEntity(r.g,r.d,r.lane,.85);
-    r.g.scale.setScalar(1+THREE.MathUtils.clamp((state.distance-r.d)/70,-.2,.8));
-  });
-
-  obstacles.forEach((o,i)=>{
-    o.d += (state.speed*.45)*dt;
-    if(o.d<state.distance-20) o.d=state.distance+120+i*12;
-    projectEntity(o.g,o.d,o.lane,.65);
-    o.g.rotation.x+=dt*1.5; o.g.rotation.y+=dt*2;
-    if(Math.abs(o.d-state.distance)<2.2 && o.lane===state.lane) state.speed=Math.max(10,state.speed-8);
-  });
-
-  pickups.forEach((p,i)=>{
-    p.d += state.speed*.35*dt;
-    if(p.d<state.distance-15) p.d=state.distance+90+i*15;
-    projectEntity(p.g,p.d,p.lane,.55);
-    p.g.rotation.y+=dt*2;
-    if(Math.abs(p.d-state.distance)<2.0 && p.lane===state.lane){
-      p.d=state.distance+140+i*11; state.item='BOOST'; state.score+=250;
-    }
-  });
-
-  flowParticles.forEach(fp=>{
-    fp.offset -= fp.speed*dt;
-    if(fp.offset<state.distance-10) fp.offset=state.distance+480;
-    const p=worldAt(fp.offset,fp.lane,.25+Math.sin(fp.offset*.09)*.15);
-    fp.mesh.position.copy(p);
-  });
-
-  // Camera follows the actual 3D tangent. This is the key difference from the 2D version.
-  const t=THREE.MathUtils.clamp(state.distance/TRACK_LEN,0,0.998);
-  const f=frameAt(t);
-  const camTarget=worldAt(state.distance+5,state.lane,1.6);
-  const camPos=worldAt(state.distance-6,state.lane,3.7);
-  camera.position.lerp(camPos,.12);
-  const look=f.p.clone().addScaledVector(f.tangent,12).addScaledVector(f.trueUp,1.2);
-  camera.lookAt(look);
-
-  const event=state.distance<110?'STABLE':state.distance<220?'CURVE ↑':state.distance<330?'TURBULÊNCIA':state.distance<430?'DESCIDA':'UV/VIS';
-  document.getElementById('flowState').textContent=event;
-  document.getElementById('dist').textContent=Math.min(500,Math.floor(state.distance))+' m';
-  document.getElementById('pos').textContent=(1+rivals.filter(r=>r.d<state.distance).length)+'/4';
-  document.getElementById('item').textContent=state.item||'—';
-  document.getElementById('speed').textContent=state.boost>0?'BOOST':'RUN';
-
-  if(state.distance>=500) finish();
-}
-
-function resize(){
-  camera.aspect=innerWidth/innerHeight;
-  camera.updateProjectionMatrix();
-  renderer.setSize(innerWidth,innerHeight);
-  renderer.setPixelRatio(Math.min(devicePixelRatio,1.6));
-}
-addEventListener('resize',resize);
-
-function key(e){
-  if(e.code==='ArrowLeft'||e.code==='KeyA'){e.preventDefault();laneMove(-1);}
-  if(e.code==='ArrowRight'||e.code==='KeyD'){e.preventDefault();laneMove(1);}
-  if(e.code==='Space'){e.preventDefault();useItem();}
-  if(e.code==='KeyR'){e.preventDefault();start();}
-}
-addEventListener('keydown',key);
-
-document.getElementById('left').onpointerdown=()=>laneMove(-1);
-document.getElementById('right').onpointerdown=()=>laneMove(1);
-document.getElementById('itemBtn').onpointerdown=()=>useItem();
-document.getElementById('startBtn').onclick=start;
-
-let sx=0,sy=0;
-addEventListener('touchstart',e=>{const t=e.changedTouches[0];sx=t.clientX;sy=t.clientY;},{passive:true});
-addEventListener('touchend',e=>{
-  const t=e.changedTouches[0],dx=t.clientX-sx,dy=t.clientY-sy;
-  if(Math.abs(dx)>35 && Math.abs(dx)>Math.abs(dy)*1.15) laneMove(dx<0?-1:1);
-  else if(Math.abs(dy)<30 && Math.abs(dx)<30) useItem();
-},{passive:true});
-
-function animate(){
-  requestAnimationFrame(animate);
-  const dt=Math.min(clock.getDelta(),.033);
-  updateWorld(dt);
-  renderer.render(scene,camera);
-}
-animate();
-</script>
+<script type="module" src="./assets/main.js"></script>
 </body>
 </html>
