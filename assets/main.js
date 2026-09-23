@@ -54,12 +54,12 @@ const SECTORS = buildSectors(GAME_CONFIG.raceDistance);
 const LANES = [-1, 0, 1];
 
 const RIVALS_DEF = [
-  { name: 'Captain Caffeine', color: 0xff7b31, emissive: 0x5a2208, lane: -1, speedIndex: 0, isCaptain: true },
+  { name: 'Captain Caffeine', color: 0xff7b31, emissive: 0x5a2208, lane: -1, speedIndex: 0, spriteId: 'captain' },
   { name: 'Lady Paraben', color: 0xd9368a, emissive: 0x4a1030, lane: 1, speedIndex: 1 },
-  { name: 'Aroma', color: 0x5de5ff, emissive: 0x0a3a4a, lane: 0, speedIndex: 2 },
+  { name: 'Aroma', color: 0x5de5ff, emissive: 0x0a3a4a, lane: 0, speedIndex: 2, spriteId: 'aroma' },
 ];
 
-/** Captain Caffeine sheets — same 64×64 horizontal layout as Vita C (512×64 = 8 frames). */
+/** Shared 64×64 horizontal sheets (same layout as Vita C). */
 const CAPTAIN_ANIMS = {
   run: { url: './assets/captain-caffeine-run.png', frames: 8 },
   'run-back': { url: './assets/captain-caffeine-run-back.png', frames: 8 },
@@ -71,6 +71,20 @@ const CAPTAIN_ANIMS = {
   fall: { url: './assets/captain-caffeine-fall.png', frames: 4 },
   skid: { url: './assets/captain-caffeine-skid.png', frames: 4 },
   hit: { url: './assets/captain-caffeine-hit.png', frames: 4 },
+};
+
+const AROMA_ANIMS = {
+  run: { url: './assets/aroma-run.png', frames: 8 },
+  'run-back': { url: './assets/aroma-run-back.png', frames: 8 },
+  boost: { url: './assets/aroma-boost.png', frames: 7 },
+  attack: { url: './assets/aroma-attack-side.png', frames: 6 },
+  victory: { url: './assets/aroma-victory.png', frames: 4 },
+  idle: { url: './assets/aroma-idle.png', frames: 4 },
+  jump: { url: './assets/aroma-jump.png', frames: 4 },
+  fall: { url: './assets/aroma-fall.png', frames: 4 },
+  skid: { url: './assets/aroma-skid.png', frames: 4 },
+  hit: { url: './assets/aroma-hit.png', frames: 4 },
+  hurt: { url: './assets/aroma-hurt.png', frames: 4 },
 };
 
 // ---------------------------------------------------------------------------
@@ -579,76 +593,7 @@ function setVitaFrame(n) {
 }
 
 // ---------------------------------------------------------------------------
-// Captain Caffeine — same Sprite pattern as Vita C
-const captainTextures = {};
-Object.entries(CAPTAIN_ANIMS).forEach(([key, def]) => {
-  const tex = texLoader.load(def.url);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  tex.magFilter = THREE.NearestFilter;
-  tex.minFilter = THREE.NearestFilter;
-  tex.wrapS = THREE.ClampToEdgeWrapping;
-  tex.wrapT = THREE.ClampToEdgeWrapping;
-  tex.repeat.set(1 / def.frames, 1);
-  tex.offset.set(0, 0);
-  captainTextures[key] = tex;
-});
-
-const captainMat = new THREE.SpriteMaterial({
-  map: captainTextures['run-back'],
-  transparent: true,
-  depthWrite: false,
-  depthTest: true,
-});
-const captain = new THREE.Sprite(captainMat);
-captain.scale.set(3.1, 3.1, 1);
-captain.renderOrder = 2;
-scene.add(captain);
-
-let captainAnim = 'run-back';
-let captainFrames = CAPTAIN_ANIMS['run-back'].frames;
-let captainFrame = 0;
-let captainAnimTime = 0;
-let captainLock = 0;
-
-function setCaptainFrame(n) {
-  captainMat.map.offset.x = n / captainFrames;
-}
-
-function playCaptain(name, lock = 0) {
-  const def = CAPTAIN_ANIMS[name];
-  if (!def || !captainTextures[name]) return;
-  if (captainAnim === name && lock <= 0) return;
-  captainAnim = name;
-  captainFrames = def.frames;
-  captainFrame = 0;
-  captainAnimTime = 0;
-  captainLock = lock;
-  captainMat.map = captainTextures[name];
-  captainMat.map.repeat.set(1 / def.frames, 1);
-  captainMat.map.offset.x = 0;
-  captainMat.needsUpdate = true;
-}
-
-function tickCaptainAnim(dt, fps = 12) {
-  if (captainLock > 0) captainLock = Math.max(0, captainLock - dt);
-  captainAnimTime += dt;
-  const frameDur = 1 / fps;
-  if (captainAnimTime >= frameDur) {
-    captainAnimTime = 0;
-    captainFrame = (captainFrame + 1) % captainFrames;
-    setCaptainFrame(captainFrame);
-  }
-  if (captainLock <= 0 && ['skid', 'attack', 'fall', 'jump', 'hit'].includes(captainAnim)) {
-    playCaptain('run-back');
-  }
-}
-
-function placeCaptainLikeVita(distance, lane, size = 3.1) {
-  worldAt(distance, lane, 1.05, captain.position);
-  captain.position.addScaledVector(frameAt(THREE.MathUtils.clamp(distance / RACE_DISTANCE, 0, 0.9995)).trueUp, 0.45);
-  captain.scale.set(size, size, 1);
-}
-
+// Rival sprite actors — same THREE.Sprite pipeline as Vita C
 function makeRivalNameLabel(name) {
   const canvas = document.createElement('canvas');
   canvas.width = 256;
@@ -667,11 +612,140 @@ function makeRivalNameLabel(name) {
   return label;
 }
 
-const captainLabel = makeRivalNameLabel('Captain Caffeine');
-scene.add(captainLabel);
+function createRivalSpriteActor(name, animDefs, defaultAnim = 'run-back') {
+  const textures = {};
+  Object.entries(animDefs).forEach(([key, def]) => {
+    const tex = texLoader.load(def.url);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.magFilter = THREE.NearestFilter;
+    tex.minFilter = THREE.NearestFilter;
+    tex.wrapS = THREE.ClampToEdgeWrapping;
+    tex.wrapT = THREE.ClampToEdgeWrapping;
+    tex.repeat.set(1 / def.frames, 1);
+    tex.offset.set(0, 0);
+    textures[key] = tex;
+  });
+
+  const mat = new THREE.SpriteMaterial({
+    map: textures[defaultAnim],
+    transparent: true,
+    depthWrite: false,
+    depthTest: true,
+  });
+  const sprite = new THREE.Sprite(mat);
+  sprite.scale.set(3.1, 3.1, 1);
+  sprite.renderOrder = 2;
+  scene.add(sprite);
+
+  const label = makeRivalNameLabel(name);
+  scene.add(label);
+
+  const oneshots = ['skid', 'attack', 'fall', 'jump', 'hit', 'hurt'];
+
+  return {
+    name,
+    animDefs,
+    textures,
+    sprite,
+    mat,
+    label,
+    anim: defaultAnim,
+    frames: animDefs[defaultAnim].frames,
+    frame: 0,
+    animTime: 0,
+    lock: 0,
+    defaultAnim,
+    play(animName, lock = 0) {
+      const def = this.animDefs[animName];
+      if (!def || !this.textures[animName]) return;
+      if (this.anim === animName && lock <= 0) return;
+      this.anim = animName;
+      this.frames = def.frames;
+      this.frame = 0;
+      this.animTime = 0;
+      this.lock = lock;
+      this.mat.map = this.textures[animName];
+      this.mat.map.repeat.set(1 / def.frames, 1);
+      this.mat.map.offset.x = 0;
+      this.mat.needsUpdate = true;
+    },
+    tick(dt, fps = 12) {
+      if (this.lock > 0) this.lock = Math.max(0, this.lock - dt);
+      this.animTime += dt;
+      if (this.animTime >= 1 / fps) {
+        this.animTime = 0;
+        this.frame = (this.frame + 1) % this.frames;
+        this.mat.map.offset.x = this.frame / this.frames;
+      }
+      if (this.lock <= 0 && oneshots.includes(this.anim)) {
+        this.play(this.defaultAnim);
+      }
+    },
+    place(distance, lane, size = 3.1) {
+      worldAt(distance, lane, 1.05, this.sprite.position);
+      this.sprite.position.addScaledVector(
+        frameAt(THREE.MathUtils.clamp(distance / RACE_DISTANCE, 0, 0.9995)).trueUp,
+        0.45
+      );
+      this.sprite.scale.set(size, size, 1);
+    },
+    updateVisual(r, dt, boostingPlayer) {
+      const prox = THREE.MathUtils.clamp(1.2 - Math.abs(r.d - state.distance) / 100, 0.85, 1.35);
+      const size = 3.1 * prox;
+      this.place(r.d, r.laneF, size);
+      this.label.position.copy(this.sprite.position);
+      this.label.position.y += 1.75;
+      this.label.scale.set(3.2 * prox, 0.8 * prox, 1);
+
+      if (state.mode === 'menu' || state.mode === 'countdown') {
+        this.play('idle');
+        this.tick(dt, 8);
+        return;
+      }
+      if (state.mode === 'results' || state.finished) {
+        this.play(r.d >= state.distance ? 'victory' : 'idle');
+        this.tick(dt, 8);
+        return;
+      }
+      if (state.mode !== 'race') {
+        this.play('idle');
+        this.tick(dt, 8);
+        return;
+      }
+
+      if (this.lock > 0) {
+        this.tick(dt, this.anim === 'attack' || this.anim === 'hit' || this.anim === 'hurt' ? 14 : 12);
+        return;
+      }
+
+      const laneDelta = Math.abs(r.lane - r.laneF);
+      if (laneDelta > 0.35) {
+        this.play('skid', 0.35);
+      } else if (r.boostPulse > 0) {
+        r.boostPulse -= dt;
+        this.play('boost');
+      } else if (r.d + 12 < state.distance && boostingPlayer) {
+        this.play('run');
+      } else if (
+        r.speed > GAME_CONFIG.rivalBaseSpeeds[r.speedIndex] * 1.08
+        || (boostingPlayer && Math.abs(r.d - state.distance) < 18 && r.d > state.distance)
+      ) {
+        this.play('boost');
+      } else {
+        this.play(this.defaultAnim);
+      }
+      this.tick(dt, this.anim === 'boost' ? 14 : 12);
+    },
+  };
+}
+
+const spriteActors = {
+  captain: createRivalSpriteActor('Captain Caffeine', CAPTAIN_ANIMS, 'run-back'),
+  aroma: createRivalSpriteActor('Aroma', AROMA_ANIMS, 'run-back'),
+};
 
 // ---------------------------------------------------------------------------
-// Rivals (Captain = Vita-style sprite; others keep molecule meshes)
+// Rivals (sprite actors for Captain/Aroma; Lady Paraben keeps molecule mesh)
 const rivals = RIVALS_DEF.map((def, i) => {
   const entry = {
     ...def,
@@ -684,10 +758,12 @@ const rivals = RIVALS_DEF.map((def, i) => {
     g: null,
     orbit: null,
     label: null,
+    actor: null,
   };
 
-  if (def.isCaptain) {
-    entry.label = captainLabel;
+  if (def.spriteId && spriteActors[def.spriteId]) {
+    entry.actor = spriteActors[def.spriteId];
+    entry.label = entry.actor.label;
     return entry;
   }
 
@@ -713,54 +789,6 @@ const rivals = RIVALS_DEF.map((def, i) => {
   entry.label = label;
   return entry;
 });
-
-function updateCaptainVisual(r, dt, boostingPlayer) {
-  const prox = THREE.MathUtils.clamp(1.2 - Math.abs(r.d - state.distance) / 100, 0.85, 1.35);
-  const size = 3.1 * prox;
-  placeCaptainLikeVita(r.d, r.laneF, size);
-  captainLabel.position.copy(captain.position);
-  captainLabel.position.y += 1.75;
-  captainLabel.scale.set(3.2 * prox, 0.8 * prox, 1);
-
-  if (state.mode === 'menu' || state.mode === 'countdown') {
-    playCaptain('idle');
-    tickCaptainAnim(dt, 8);
-    return;
-  }
-  if (state.mode === 'results' || state.finished) {
-    playCaptain(r.d >= state.distance ? 'victory' : 'idle');
-    tickCaptainAnim(dt, 8);
-    return;
-  }
-  if (state.mode !== 'race') {
-    playCaptain('idle');
-    tickCaptainAnim(dt, 8);
-    return;
-  }
-
-  if (captainLock > 0) {
-    tickCaptainAnim(dt, captainAnim === 'attack' || captainAnim === 'hit' ? 14 : 12);
-    return;
-  }
-
-  const laneDelta = Math.abs(r.lane - r.laneF);
-  if (laneDelta > 0.35) {
-    playCaptain('skid', 0.35);
-  } else if (r.boostPulse > 0) {
-    r.boostPulse -= dt;
-    playCaptain('boost');
-  } else if (r.d + 12 < state.distance && boostingPlayer) {
-    playCaptain('run'); // side sprint when being overtaken
-  } else if (
-    r.speed > GAME_CONFIG.rivalBaseSpeeds[r.speedIndex] * 1.08
-    || (boostingPlayer && Math.abs(r.d - state.distance) < 18 && r.d > state.distance)
-  ) {
-    playCaptain('boost');
-  } else {
-    playCaptain('run-back'); // rear view — same camera angle as Vita C
-  }
-  tickCaptainAnim(dt, captainAnim === 'boost' ? 14 : 12);
-}
 
 // Obstacles pool
 const OBSTACLE_TYPES = ['silica', 'bubble', 'concentration', 'interferent', 'cluster'];
@@ -887,7 +915,7 @@ function resetRaceEntities() {
     r.speed = GAME_CONFIG.rivalBaseSpeeds[r.speedIndex] * (0.94 + rnd() * 0.1);
     r.laneTimer = 1.5 + i * 0.8;
     r.boostPulse = 0;
-    if (r.isCaptain) playCaptain('run-back');
+    if (r.actor) r.actor.play(r.actor.defaultAnim);
   });
   obstacles.forEach((o, i) => {
     o.d = 100 + i * 62 + rnd() * 20;
@@ -1045,8 +1073,8 @@ function updateRace(dt) {
       r.laneTimer = 1.2 + rnd() * 2.4;
       const options = LANES.filter((l) => l !== state.lane || rnd() > 0.4);
       r.lane = options[Math.floor(rnd() * options.length)] ?? r.lane;
-      if (r.isCaptain && rnd() > 0.55) r.boostPulse = 0.7 + rnd() * 0.6;
-      if (r.isCaptain && rnd() > 0.82) playCaptain('attack', 0.55);
+      if (r.actor && rnd() > 0.55) r.boostPulse = 0.7 + rnd() * 0.6;
+      if (r.actor && rnd() > 0.82) r.actor.play('attack', 0.55);
     }
     r.laneF += (r.lane - r.laneF) * Math.min(1, dt * 4);
     const pace = r.speed * (boosting && r.d < state.distance + 8 ? 0.92 : 1) * (r.boostPulse > 0 ? 1.12 : 1);
@@ -1055,18 +1083,17 @@ function updateRace(dt) {
     if (r.d < state.distance - 80) r.d = state.distance + 40 + i * 20;
     r.d = Math.min(r.d, RACE_DISTANCE - 5);
 
-    if (r.isCaptain) {
-      // Player bump / overtake hit reaction
+    if (r.actor) {
       if (
         boosting
         && Math.abs(r.d - state.distance) < 3.2
         && Math.abs(r.laneF - state.lane) < 0.35
-        && captainLock <= 0
+        && r.actor.lock <= 0
       ) {
-        playCaptain('hit', 0.45);
+        r.actor.play('hit', 0.45);
         r.d -= 6;
       }
-      updateCaptainVisual(r, dt, boosting);
+      r.actor.updateVisual(r, dt, boosting);
     } else {
       worldAt(r.d, r.laneF, 0.95, r.g.position);
       if (r.orbit) r.orbit.rotation.y += dt * 2.5;
@@ -1234,22 +1261,21 @@ function animate() {
       vitaFrame = (vitaFrame + 1) % 8;
       setVitaFrame(vitaFrame);
     }
-    // Keep Captain visible on menu (same sprite pipeline as Vita)
-    const captainMenu = rivals.find((r) => r.isCaptain);
-    if (captainMenu) {
-      captainMenu.d = 18;
-      captainMenu.laneF = -1;
-      captainMenu.lane = -1;
-      updateCaptainVisual(captainMenu, dt, false);
-    }
-    rivals.forEach((r) => {
-      if (!r.isCaptain) worldAt(r.d, r.laneF, 0.95, r.g.position);
+    // Keep sprite rivals visible on menu (same pipeline as Vita)
+    rivals.forEach((r, i) => {
+      if (r.actor) {
+        r.d = 16 + i * 6;
+        r.lane = r.laneF = (i % 3) - 1;
+        r.actor.updateVisual(r, dt, false);
+      } else {
+        worldAt(r.d, r.laneF, 0.95, r.g.position);
+      }
     });
     placeDetector();
   }
   if (state.mode === 'countdown' || state.mode === 'results') {
     rivals.forEach((r) => {
-      if (r.isCaptain) updateCaptainVisual(r, dt, false);
+      if (r.actor) r.actor.updateVisual(r, dt, false);
       else worldAt(r.d, r.laneF, 0.95, r.g.position);
     });
   }
@@ -1362,13 +1388,13 @@ buildFlowChannels();
 spawnFlowParticles();
 placeDetector();
 setVitaFrame(0);
-playCaptain('idle');
 worldAt(8, 0, 1.1, vita.position);
 rivals.forEach((r) => {
-  if (r.isCaptain) {
-    placeCaptainLikeVita(r.d, r.laneF, 3.1);
-    captainLabel.position.copy(captain.position);
-    captainLabel.position.y += 1.75;
+  if (r.actor) {
+    r.actor.play('idle');
+    r.actor.place(r.d, r.laneF, 3.1);
+    r.actor.label.position.copy(r.actor.sprite.position);
+    r.actor.label.position.y += 1.75;
   } else {
     worldAt(r.d, r.lane, 0.95, r.g.position);
   }
@@ -1378,4 +1404,6 @@ state.mode = 'menu';
 animate();
 
 // Expose config for debugging / easy distance change verification
-window.CHROMARACERS = { GAME_CONFIG, RACE_DISTANCE, SECTORS, state, Storage, rivals, captain, vita };
+window.CHROMARACERS = {
+  GAME_CONFIG, RACE_DISTANCE, SECTORS, state, Storage, rivals, vita, spriteActors,
+};
