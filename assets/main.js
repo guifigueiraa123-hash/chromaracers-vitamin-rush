@@ -740,7 +740,7 @@ function sampleSilicaRadial(category) {
 
 function pickSilicaCategory() {
   const r = rnd();
-  if (r < 0.83) return 'wall';
+  if (r < 0.85) return 'wall';
   if (r < 0.97) return 'near';
   return 'free';
 }
@@ -1008,9 +1008,9 @@ function buildSilicaField() {
   }
 
   // Sparse near-wall particles for depth without filling the corridor
-  const nearStep = Math.max(2.8, 3.2 / Math.max(0.55, mul));
+  const nearStep = Math.max(3.4, 3.8 / Math.max(0.55, mul));
   for (let d0 = 10; d0 < RACE_DISTANCE - 14; d0 += nearStep) {
-    if (rnd() > 0.55) continue;
+    if (rnd() > 0.32) continue;
     const ang = sampleSilicaAngle();
     queueAt(
       pickParticleKey(true),
