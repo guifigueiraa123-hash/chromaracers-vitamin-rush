@@ -399,10 +399,6 @@ const geo = {
 };
 
 const mats = {
-  silicaNear: new THREE.MeshBasicMaterial({ color: 0xb8a0e8 }),
-  silicaMid: new THREE.MeshBasicMaterial({ color: 0x7a6bc4 }),
-  silicaFar: new THREE.MeshBasicMaterial({ color: 0x4a3a8a }),
-  silicaHi: new THREE.MeshBasicMaterial({ color: 0xe8e0ff }),
   flowPixel: new THREE.MeshBasicMaterial({ color: 0x5de5ff, transparent: true, opacity: 0.85 }),
   flowSoft: new THREE.MeshBasicMaterial({
     color: 0x3ecfff, transparent: true, opacity: 0.045, depthWrite: false, blending: THREE.AdditiveBlending,
@@ -432,8 +428,13 @@ const mats = {
 
 // ---------------------------------------------------------------------------
 // ColumnEnvironment — chromatographic column following the race spline
+/** Dev-only: denser silica visibility; hide some non-silica env when true. Not exposed in UI. */
+const DEBUG_SILICA = false;
+
 const envGroup = new THREE.Group();
 scene.add(envGroup);
+const silicaGroup = new THREE.Group();
+scene.add(silicaGroup);
 const flowGroup = new THREE.Group();
 scene.add(flowGroup);
 const infraGroup = new THREE.Group();
@@ -442,16 +443,12 @@ const detectorGroup = new THREE.Group();
 scene.add(detectorGroup);
 
 const texLoader = new THREE.TextureLoader();
-const silicaTex = texLoader.load('./assets/silica-back.png');
-silicaTex.colorSpace = THREE.SRGBColorSpace;
-silicaTex.wrapS = silicaTex.wrapT = THREE.RepeatWrapping;
-silicaTex.repeat.set(6, 3);
 
+// Column shell — structural only (no silica-back wallpaper; packing uses sprite assets)
 mats.columnWall = new THREE.MeshBasicMaterial({
-  map: silicaTex,
-  color: 0x6a5aaa,
+  color: 0x152848,
   transparent: true,
-  opacity: 0.28,
+  opacity: 0.32,
   side: THREE.BackSide,
   depthWrite: false,
 });
@@ -466,6 +463,9 @@ function disposeObject3D(obj) {
   obj.traverse((child) => {
     if (child.geometry && !Object.values(geo).includes(child.geometry)) {
       child.geometry.dispose?.();
+    }
+    if (child.userData?.disposeMaterial && child.material) {
+      child.material.dispose?.();
     }
   });
 }
@@ -492,29 +492,88 @@ function columnVisualProfile(distance) {
 const flowParticles = [];
 const ambientMolecules = [];
 
-function makeInstancedSilica(material, count, radiusMin, radiusMax, scaleMin, scaleMax) {
-  const mesh = new THREE.InstancedMesh(geo.pixel, material, count);
-  mesh.instanceMatrix.setUsage(THREE.StaticDrawUsage);
-  const dummy = new THREE.Object3D();
-  for (let i = 0; i < count; i++) {
-    const d = 8 + rnd() * (RACE_DISTANCE - 16);
-    const f = frameAt(d / RACE_DISTANCE);
-    // Prefer wall bands (avoid blocking center track)
-    const angle = (rnd() * Math.PI * 1.55) + Math.PI * 0.2;
-    const radius = radiusMin + rnd() * (radiusMax - radiusMin);
-    const p = f.p.clone()
-      .addScaledVector(f.side, Math.cos(angle) * radius)
-      .addScaledVector(f.trueUp, Math.sin(angle) * radius * 0.92);
-    dummy.position.copy(p);
-    dummy.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), f.tangent);
-    const s = scaleMin + rnd() * (scaleMax - scaleMin);
-    dummy.scale.set(s * (0.7 + rnd() * 0.6), s * (0.55 + rnd() * 0.7), s * (0.7 + rnd() * 0.6));
-    dummy.updateMatrix();
-    mesh.setMatrixAt(i, dummy.matrix);
+/** Approved stationary-phase sprites — NearestFilter preserves 16-bit crispness. */
+function loadSilicaTexture(url) {
+  const tex = texLoader.load(url);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.magFilter = THREE.NearestFilter;
+  tex.minFilter = THREE.NearestFilter;
+  tex.generateMipmaps = false;
+  return tex;
+}
+
+const SILICA_TEX = {
+  particleSmall: loadSilicaTexture('./assets/environment/silica/silica-particle-small.png'),
+  particleMedium: loadSilicaTexture('./assets/environment/silica/silica-particle-medium.png'),
+  particleLarge: loadSilicaTexture('./assets/environment/silica/silica-particle-large.png'),
+  clusterSmall: loadSilicaTexture('./assets/environment/silica/silica-cluster-small.png'),
+  clusterMedium: loadSilicaTexture('./assets/environment/silica/silica-cluster-medium.png'),
+  clusterLarge: loadSilicaTexture('./assets/environment/silica/silica-cluster-large.png'),
+};
+
+const SILICA_MATS = {
+  particleSmall: new THREE.SpriteMaterial({
+    map: SILICA_TEX.particleSmall, transparent: true, depthWrite: false, sizeAttenuation: true,
+  }),
+  particleMedium: new THREE.SpriteMaterial({
+    map: SILICA_TEX.particleMedium, transparent: true, depthWrite: false, sizeAttenuation: true,
+  }),
+  particleLarge: new THREE.SpriteMaterial({
+    map: SILICA_TEX.particleLarge, transparent: true, depthWrite: false, sizeAttenuation: true,
+  }),
+  clusterSmall: new THREE.SpriteMaterial({
+    map: SILICA_TEX.clusterSmall, transparent: true, depthWrite: false, sizeAttenuation: true,
+  }),
+  clusterMedium: new THREE.SpriteMaterial({
+    map: SILICA_TEX.clusterMedium, transparent: true, depthWrite: false, sizeAttenuation: true,
+  }),
+  clusterLarge: new THREE.SpriteMaterial({
+    map: SILICA_TEX.clusterLarge, transparent: true, depthWrite: false, sizeAttenuation: true,
+  }),
+};
+
+/** Runtime counts exposed for reports / debug. */
+const silicaStats = { particles: 0, clusters: 0 };
+
+/**
+ * Sample packed wall position along the race spline.
+ * Density: wall-adjacent high · sides medium · lane/center very low.
+ * Stationary phase — placed once; no independent boost motion.
+ */
+function sampleSilicaPlacement(opts) {
+  const { rMin, rMax, wallBias } = opts;
+  let angle = 0;
+  let radius = rMin;
+  let lateral = 0;
+  let lift = 0;
+  for (let attempt = 0; attempt < 8; attempt++) {
+    angle = rnd() * Math.PI * 2;
+    // Bias radius toward the wall (high r)
+    const u = Math.pow(rnd(), wallBias);
+    radius = rMin + u * (rMax - rMin);
+    lateral = Math.cos(angle) * radius;
+    lift = Math.sin(angle) * radius * 0.92;
+    const corridor = Math.abs(lateral) < GAME_CONFIG.laneWidth * 1.35 && Math.abs(lift) < 1.6;
+    if (!corridor || rnd() < 0.04) break; // rare center grit only
   }
-  mesh.instanceMatrix.needsUpdate = true;
-  mesh.frustumCulled = true;
-  return mesh;
+  return { angle, radius, lateral, lift };
+}
+
+function placeSilicaSprite(material, distance, lateral, lift, scale) {
+  // Clone so per-sprite rotation does not mutate the shared packing material
+  const mat = material.clone();
+  mat.rotation = (rnd() - 0.5) * 0.85;
+  const sprite = new THREE.Sprite(mat);
+  sprite.userData.disposeMaterial = true;
+  const s = scale * (0.92 + rnd() * 0.16);
+  sprite.scale.set(s, s, 1);
+  const f = frameAt(THREE.MathUtils.clamp(distance / RACE_DISTANCE, 0, 0.999));
+  sprite.position.copy(f.p)
+    .addScaledVector(f.side, lateral)
+    .addScaledVector(f.trueUp, lift);
+  sprite.frustumCulled = true;
+  silicaGroup.add(sprite);
+  return sprite;
 }
 
 function buildColumnStructure() {
@@ -550,35 +609,70 @@ function buildColumnStructure() {
   ));
 }
 
+/**
+ * Stationary-phase packing from approved silica sprites.
+ * ~70% particles / ~30% clusters · wall-biased · 3 depth bands · spline-attached.
+ */
 function buildSilicaField() {
-  const mul = qualityState.particleMul;
-  // 3 depth layers + highlight grit — packing beads on the column wall
-  envGroup.add(makeInstancedSilica(mats.silicaNear, Math.floor(120 * mul), 7.0, 8.4, 0.32, 0.62));
-  envGroup.add(makeInstancedSilica(mats.silicaMid, Math.floor(200 * mul), 8.2, 9.6, 0.18, 0.36));
-  envGroup.add(makeInstancedSilica(mats.silicaFar, Math.floor(320 * mul), 9.4, 11.0, 0.07, 0.16));
-  envGroup.add(makeInstancedSilica(mats.silicaHi, Math.floor(55 * mul), 7.4, 10.0, 0.09, 0.2));
+  clearGroup(silicaGroup);
+  silicaStats.particles = 0;
+  silicaStats.clusters = 0;
 
-  // Occasional denser packing clusters (still wall-bound, not cave rocks)
-  const clusterCount = Math.floor(28 * mul);
-  const clusters = new THREE.InstancedMesh(geo.crystal, mats.silicaMid, clusterCount);
-  clusters.instanceMatrix.setUsage(THREE.StaticDrawUsage);
-  const dummy = new THREE.Object3D();
-  for (let i = 0; i < clusterCount; i++) {
-    const d = 20 + rnd() * (RACE_DISTANCE - 40);
-    const f = frameAt(d / RACE_DISTANCE);
-    const angle = (rnd() * Math.PI * 1.4) + Math.PI * 0.25;
-    const radius = 7.4 + rnd() * 1.6;
-    dummy.position.copy(f.p)
-      .addScaledVector(f.side, Math.cos(angle) * radius)
-      .addScaledVector(f.trueUp, Math.sin(angle) * radius * 0.9);
-    dummy.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), f.tangent);
-    const s = 0.35 + rnd() * 0.45;
-    dummy.scale.set(s, s * (0.7 + rnd() * 0.5), s);
-    dummy.updateMatrix();
-    clusters.setMatrixAt(i, dummy.matrix);
+  const mul = qualityState.particleMul * (DEBUG_SILICA ? 1.35 : 1);
+  const debugScale = DEBUG_SILICA ? 1.15 : 1;
+
+  // Depth bands: far / mid / near (higher r = closer to column wall)
+  const bands = [
+    {
+      kind: 'particle', mat: SILICA_MATS.particleSmall, count: Math.floor(170 * mul),
+      rMin: 9.0, rMax: 10.15, wallBias: 0.55, scaleMin: 0.32, scaleMax: 0.48,
+    },
+    {
+      kind: 'particle', mat: SILICA_MATS.particleMedium, count: Math.floor(110 * mul),
+      rMin: 8.1, rMax: 9.5, wallBias: 0.65, scaleMin: 0.5, scaleMax: 0.78,
+    },
+    {
+      kind: 'particle', mat: SILICA_MATS.particleLarge, count: Math.floor(65 * mul),
+      rMin: 7.2, rMax: 8.6, wallBias: 0.75, scaleMin: 0.72, scaleMax: 1.05,
+    },
+    {
+      kind: 'cluster', mat: SILICA_MATS.clusterSmall, count: Math.floor(48 * mul),
+      rMin: 7.6, rMax: 9.4, wallBias: 0.7, scaleMin: 0.85, scaleMax: 1.25,
+    },
+    {
+      kind: 'cluster', mat: SILICA_MATS.clusterMedium, count: Math.floor(32 * mul),
+      rMin: 7.8, rMax: 9.6, wallBias: 0.72, scaleMin: 1.1, scaleMax: 1.55,
+    },
+    {
+      kind: 'cluster', mat: SILICA_MATS.clusterLarge, count: Math.floor(18 * mul),
+      rMin: 8.0, rMax: 9.9, wallBias: 0.8, scaleMin: 1.35, scaleMax: 1.85,
+    },
+  ];
+
+  bands.forEach((band) => {
+    for (let i = 0; i < band.count; i++) {
+      const d = 10 + rnd() * (RACE_DISTANCE - 20);
+      const place = sampleSilicaPlacement({
+        rMin: band.rMin,
+        rMax: band.rMax,
+        wallBias: band.wallBias,
+      });
+      const scale = (band.scaleMin + rnd() * (band.scaleMax - band.scaleMin)) * debugScale;
+      placeSilicaSprite(band.mat, d, place.lateral, place.lift, scale);
+      if (band.kind === 'cluster') silicaStats.clusters += 1;
+      else silicaStats.particles += 1;
+    }
+  });
+
+  if (DEBUG_SILICA) {
+    flowGroup.visible = false;
+    infraGroup.visible = false;
+    mats.columnWall.opacity = 0.12;
+  } else {
+    flowGroup.visible = true;
+    infraGroup.visible = true;
+    mats.columnWall.opacity = 0.32;
   }
-  clusters.instanceMatrix.needsUpdate = true;
-  envGroup.add(clusters);
 }
 
 function buildInfrastructure() {
@@ -631,11 +725,12 @@ function buildInfrastructure() {
 
 function buildEnvironment() {
   clearGroup(envGroup);
+  clearGroup(silicaGroup);
   clearGroup(infraGroup);
   seed = 1337;
   buildColumnStructure();
   buildSilicaField();
-  buildInfrastructure();
+  if (!DEBUG_SILICA) buildInfrastructure();
 }
 
 function buildFlowChannels() {
@@ -1641,4 +1736,5 @@ animate();
 // Expose config for debugging / easy distance change verification
 window.CHROMARACERS = {
   GAME_CONFIG, RACE_DISTANCE, SECTORS, state, Storage, rivals, vita, spriteActors,
+  DEBUG_SILICA, silicaStats, silicaGroup,
 };
