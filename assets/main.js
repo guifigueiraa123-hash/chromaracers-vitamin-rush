@@ -311,8 +311,8 @@ function applyQuality(mode, fpsHint = 60) {
 // Three.js scene bootstrap
 const mount = $('game');
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x12182e);
-scene.fog = new THREE.FogExp2(0x12182e, 0.0054);
+scene.background = new THREE.Color(0x1a2040);
+scene.fog = new THREE.FogExp2(0x1a2040, 0.0048);
 
 const camera = new THREE.PerspectiveCamera(
   GAME_CONFIG.camera.baseFov,
@@ -658,8 +658,11 @@ function buildColumnStructure() {
 
 /**
  * Stationary-phase packing — mid-density wall bed (3.2.2B).
- * Midpoint between empty floating debris and cave walls:
- * ~180–280 sprites, mid/far bias, rare large clusters, wide corridor.
+ * Midpoint between empty floating debris (~few hundred visible as space rocks)
+ * and cave flood (~44k). Modest scales + wide corridor; silica frames the tube.
+ *
+ * Note: ~180–240 total over 1500 m cannot reach ~15–25% frame coverage in the
+ * player camera. Budget is ~1000–1300 modest sprites (~35× below cave).
  */
 function buildSilicaField() {
   clearGroup(silicaGroup);
@@ -673,7 +676,7 @@ function buildSilicaField() {
   });
 
   const mul = Math.min(1.1, qualityState.particleMul * (DEBUG_SILICA ? 1.15 : 1));
-  const debugScale = DEBUG_SILICA ? 1.06 : 1;
+  const debugScale = DEBUG_SILICA ? 1.05 : 1;
   /** @type {{ key: string, distance: number, lateral: number, lift: number, scale: number }[]} */
   const placements = [];
   const queue = (key, distance, lateral, lift, scale) => {
@@ -682,106 +685,94 @@ function buildSilicaField() {
 
   // Modest world scales — large ≈ 1.25–1.45× medium; avoid giant near-camera rocks
   const clusterScale = (key) => {
-    if (key === 'clusterLarge') return 1.7 + rnd() * 0.25;
-    if (key === 'clusterMedium') return 1.3 + rnd() * 0.28;
-    return 1.05 + rnd() * 0.22;
+    if (key === 'clusterLarge') return 1.65 + rnd() * 0.22;
+    if (key === 'clusterMedium') return 1.25 + rnd() * 0.28;
+    return 1.0 + rnd() * 0.22;
   };
   const particleScale = (size = 'medium') => {
-    if (size === 'small') return 0.5 + rnd() * 0.2;
-    if (size === 'large') return 0.85 + rnd() * 0.22;
-    return 0.65 + rnd() * 0.22;
+    if (size === 'small') return 0.48 + rnd() * 0.18;
+    if (size === 'large') return 0.8 + rnd() * 0.2;
+    return 0.62 + rnd() * 0.2;
   };
 
-  // Wall patches — denser than floating-debris pass, still far below cave flood
-  const patchStep = Math.max(9.5, 11 / Math.max(0.55, mul));
-  for (let d0 = 12; d0 < RACE_DISTANCE - 20; d0 += patchStep) {
-    const wave = 0.5 + 0.5 * Math.sin(d0 * 0.06) * Math.cos(d0 * 0.021);
-    // Skip bands for negative-space variation (packed patch → gap → packed patch)
-    if (rnd() > 0.78 + 0.14 * wave) continue;
+  // Wall patches with negative-space waves (packed → gap → packed)
+  const patchStep = Math.max(4.2, 4.8 / Math.max(0.55, mul));
+  for (let d0 = 10; d0 < RACE_DISTANCE - 16; d0 += patchStep) {
+    const wave = 0.5 + 0.5 * Math.sin(d0 * 0.065) * Math.cos(d0 * 0.023);
+    if (rnd() > 0.72 + 0.18 * wave) continue;
 
     for (const sideSign of [-1, 1]) {
-      if (rnd() > 0.82 + 0.1 * wave) continue;
+      if (rnd() > 0.78 + 0.12 * wave) continue;
 
-      const elev = (rnd() - 0.5) * 1.05;
-      const dd = d0 + (rnd() - 0.5) * patchStep * 0.75;
+      const elev = (rnd() - 0.5) * 1.1;
+      const dd = d0 + (rnd() - 0.5) * patchStep * 0.8;
 
-      // MID wall accent
-      {
+      // Prefer particles for count mix; clusters for packed accent
+      if (rnd() < 0.42) {
         const p = sampleWallPacked(sideSign, 9.45, 10.05, elev);
         const key = pickClusterKey();
         queue(key, dd, p.lateral, p.lift, clusterScale(key) * debugScale);
-      }
-
-      // Particle overlap for granular packed-bed read
-      if (rnd() < 0.85) {
-        const p2 = sampleWallPacked(sideSign, 9.4, 10.0, elev + (rnd() - 0.5) * 0.16);
+      } else {
+        const p = sampleWallPacked(sideSign, 9.45, 10.05, elev);
         const pk = pickParticleKey();
         const sz = pk === 'particleSmall' ? 'small' : pk === 'particleLarge' ? 'large' : 'medium';
-        queue(pk, dd + (rnd() - 0.5) * 1.5, p2.lateral, p2.lift, particleScale(sz) * debugScale);
-      }
-      if (rnd() < 0.45) {
-        const p3 = sampleWallPacked(sideSign, 9.5, 10.05, elev + (rnd() - 0.5) * 0.2);
-        queue(
-          pickParticleKey(true),
-          dd + (rnd() - 0.5) * 1.9,
-          p3.lateral, p3.lift,
-          particleScale('small') * debugScale
-        );
+        queue(pk, dd, p.lateral, p.lift, particleScale(sz) * debugScale);
       }
 
-      // Occasional second small/medium cluster (local packed patch)
-      if (rnd() < 0.28 * (0.6 + wave)) {
-        const p4 = sampleWallPacked(sideSign, 9.45, 10.05, elev + (rnd() - 0.5) * 0.22);
-        const key = rnd() < 0.65 ? 'clusterSmall' : 'clusterMedium';
-        queue(key, dd + (rnd() - 0.5) * 2.0, p4.lateral, p4.lift, clusterScale(key) * 0.92 * debugScale);
+      // Controlled overlap filler
+      if (rnd() < 0.7) {
+        const p2 = sampleWallPacked(sideSign, 9.4, 10.0, elev + (rnd() - 0.5) * 0.16);
+        if (rnd() < 0.35) {
+          const key = rnd() < 0.7 ? 'clusterSmall' : 'clusterMedium';
+          queue(key, dd + (rnd() - 0.5) * 1.4, p2.lateral, p2.lift, clusterScale(key) * 0.9 * debugScale);
+        } else {
+          const pk = pickParticleKey(true);
+          queue(pk, dd + (rnd() - 0.5) * 1.5, p2.lateral, p2.lift, particleScale('small') * debugScale);
+        }
       }
     }
   }
 
-  // FAR small particles along walls
-  const farStep = Math.max(14, 16.5 / Math.max(0.55, mul));
-  for (let d0 = 20; d0 < RACE_DISTANCE - 30; d0 += farStep) {
+  // FAR small particles — depth layer
+  const farStep = Math.max(7.5, 8.8 / Math.max(0.55, mul));
+  for (let d0 = 16; d0 < RACE_DISTANCE - 24; d0 += farStep) {
     for (const sideSign of [-1, 1]) {
-      if (rnd() > 0.62) continue;
-      const elev = (rnd() - 0.5) * 1.1;
+      if (rnd() > 0.7) continue;
+      const elev = (rnd() - 0.5) * 1.15;
       const p = sampleWallPacked(sideSign, 9.55, 10.08, elev);
-      if (rnd() < 0.15) {
-        queue('clusterSmall', d0 + rnd() * farStep * 0.5, p.lateral, p.lift, clusterScale('clusterSmall') * 0.85 * debugScale);
-      } else {
-        queue(
-          pickParticleKey(true),
-          d0 + rnd() * farStep * 0.5,
-          p.lateral, p.lift,
-          particleScale('small') * debugScale
-        );
-      }
+      queue(
+        pickParticleKey(true),
+        d0 + rnd() * farStep * 0.55,
+        p.lateral, p.lift,
+        particleScale('small') * debugScale
+      );
     }
   }
 
-  // Rare shoulder accents — frame column, do not seal a cave ceiling
-  const stitchStep = Math.max(28, 34 / Math.max(0.55, mul));
-  for (let d0 = 28; d0 < RACE_DISTANCE - 40; d0 += stitchStep) {
-    if (rnd() > 0.6) continue;
+  // Sparse shoulder accents — frame column, do not seal a cave
+  const stitchStep = Math.max(18, 22 / Math.max(0.55, mul));
+  for (let d0 = 20; d0 < RACE_DISTANCE - 30; d0 += stitchStep) {
+    if (rnd() > 0.55) continue;
     const upSign = rnd() > 0.5 ? 1 : -1;
     const sideSign = rnd() > 0.5 ? 1 : -1;
     const r = 9.5 + rnd() * 0.55;
     let lateral = sideSign * (GAME_CONFIG.laneWidth * 2.7 + rnd() * 2.6);
-    let lift = upSign * r * (0.58 + rnd() * 0.22);
+    let lift = upSign * r * (0.55 + rnd() * 0.24);
     const hyp = Math.hypot(lateral, lift) || 1;
     lateral = (lateral / hyp) * r;
     lift = (lift / hyp) * r;
     if (Math.abs(lateral) < GAME_CONFIG.laneWidth * 2.4) {
       lateral = sideSign * (GAME_CONFIG.laneWidth * 2.55 + rnd() * 0.4);
     }
-    if (rnd() < 0.45) {
-      queue('clusterSmall', d0 + rnd() * 6, lateral, lift, clusterScale('clusterSmall') * 0.88 * debugScale);
+    if (rnd() < 0.4) {
+      queue('clusterSmall', d0 + rnd() * 5, lateral, lift, clusterScale('clusterSmall') * 0.88 * debugScale);
     } else {
-      queue(pickParticleKey(true), d0 + rnd() * 6, lateral, lift, particleScale('small') * debugScale);
+      queue(pickParticleKey(true), d0 + rnd() * 5, lateral, lift, particleScale('small') * debugScale);
     }
   }
 
-  // Cap toward brief target (~180–280) — prefer visual midpoint over cave flood
-  const softMax = Math.floor(260 * Math.min(1.05, mul));
+  // Cap well below cave density while keeping mid-view packing readable
+  const softMax = Math.floor(1200 * Math.min(1.05, mul));
   if (placements.length > softMax) {
     const keep = [];
     const stride = placements.length / softMax;
@@ -826,8 +817,8 @@ function buildSilicaField() {
   } else {
     flowGroup.visible = true;
     infraGroup.visible = true;
-    mats.columnWall.opacity = 0.42;
-    if (mats.columnInnerContour) mats.columnInnerContour.opacity = 0.2;
+    mats.columnWall.opacity = 0.52;
+    if (mats.columnInnerContour) mats.columnInnerContour.opacity = 0.22;
   }
 }
 
