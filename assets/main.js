@@ -612,14 +612,13 @@ function clearGroup(group) {
 function columnVisualProfile(distance) {
   const t = distance / RACE_DISTANCE;
   // Soft fog — walls stay readable; far end darkens toward the detector horizon.
-  if (t < 0.2) return { silica: 0.75, flow: 0.7, mol: 0.45, fog: 0.0042, tint: 0x0d1530 };
-  if (t < 0.4) return { silica: 1.15, flow: 0.85, mol: 0.7, fog: 0.0045, tint: 0x101a36 };
-  if (t < 0.6) return { silica: 1.0, flow: 1.0, mol: 1.2, fog: 0.0047, tint: 0x121f3c };
-  if (t < 0.8) return { silica: 0.95, flow: 1.25, mol: 1.1, fog: 0.0049, tint: 0x0f1c38 };
-  // Approach zone: darker column, clearer air so distant optical core can read
-  if (t < 0.967) return { silica: 0.85, flow: 1.1, mol: 0.7, fog: 0.0034, tint: 0x0a1228 };
-  // Detector sector: clearer air around the instrument
-  return { silica: 0.6, flow: 0.85, mol: 0.35, fog: 0.0026, tint: 0x0c1830 };
+  // Phase A fog tints track column wall navy (#101C3A) — not a lighting polish pass
+  if (t < 0.2) return { silica: 0.75, flow: 0.7, mol: 0.45, fog: 0.004, tint: 0x101c3a };
+  if (t < 0.4) return { silica: 1.15, flow: 0.85, mol: 0.7, fog: 0.0043, tint: 0x112040 };
+  if (t < 0.6) return { silica: 1.0, flow: 1.0, mol: 1.2, fog: 0.0045, tint: 0x122244 };
+  if (t < 0.8) return { silica: 0.95, flow: 1.25, mol: 1.1, fog: 0.0046, tint: 0x101c3a };
+  if (t < 0.967) return { silica: 0.85, flow: 1.1, mol: 0.7, fog: 0.0034, tint: 0x0e1a36 };
+  return { silica: 0.6, flow: 0.85, mol: 0.35, fog: 0.0026, tint: 0x101c3a };
 }
 
 const flowParticles = [];
