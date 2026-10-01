@@ -313,9 +313,9 @@ function applyQuality(mode, fpsHint = 60) {
 // Three.js scene bootstrap
 const mount = $('game');
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x101c3a);
-// Low fog so the wide shell (R=18) remains visible at frame edges from gameplay cam
-scene.fog = new THREE.FogExp2(0x101c3a, 0.0018);
+scene.background = new THREE.Color(0x0c1834);
+// Minimal scene fog — wall uses fog:false (FogExp2 on the tube created ring banding)
+scene.fog = new THREE.FogExp2(0x0c1834, 0.0007);
 
 const camera = new THREE.PerspectiveCamera(
   GAME_CONFIG.camera.baseFov,
@@ -446,7 +446,8 @@ const DEBUG_SILICA = false;
  * When true: show ONLY column shell + corridor + player (no silica/flow/molecules/decor).
  * Not exposed in player-facing UI.
  */
-const DEBUG_COLUMN = false;
+/** Phase A.1: wall approval mode — continuous shell + player only. */
+const DEBUG_COLUMN = true;
 /** Dev-only: emphasize mobile-phase flow (Phase D). Default off. */
 const DEBUG_FLOW = false;
 /** Dev-only: emphasize molecular traffic (Phase E). Default off. */
@@ -474,115 +475,110 @@ scene.add(detectorGroup);
 const texLoader = new THREE.TextureLoader();
 
 /**
- * Phase A — chromatographic column inner-wall texture.
- * Palette lock: #101C3A deep navy / #183A67 structural blue.
- * Subtle top (calmer) vs bottom (slightly brighter) orientation only —
- * not a road, not purple fill, not neon grid.
+ * Phase A.1 — continuous HPLC glass inner-wall texture.
+ * TubeGeometry UV: U = along path, V = around circumference.
+ * Canvas X → U, canvas Y → V.
+ * Longitudinal details must be HORIZONTAL (constant V). Vertical strokes = rings.
  */
 function createColumnWallTexture() {
   const c = document.createElement('canvas');
-  c.width = 512;
-  c.height = 256;
+  c.width = 1024;
+  c.height = 512;
   const ctx = c.getContext('2d');
 
-  // Circumferential glass gradient (V wraps the tube): ceiling darker, mid walls brighter so R reads large
-  const radial = ctx.createLinearGradient(0, 0, 0, 256);
-  radial.addColorStop(0, '#0e1834');
-  radial.addColorStop(0.14, '#101c3a');
-  radial.addColorStop(0.34, '#1a3a68');
-  radial.addColorStop(0.5, '#244e86'); // brighter structural mid-wall for rim readability
-  radial.addColorStop(0.66, '#1a3a68');
-  radial.addColorStop(0.84, '#13284c');
-  radial.addColorStop(1, '#0e1834');
+  // Circumferential curvature shading (varies with V / canvas Y only)
+  const radial = ctx.createLinearGradient(0, 0, 0, 512);
+  radial.addColorStop(0.0, '#0a1428');
+  radial.addColorStop(0.16, '#101c3a');
+  radial.addColorStop(0.34, '#152848');
+  radial.addColorStop(0.50, '#183a67');
+  radial.addColorStop(0.66, '#152848');
+  radial.addColorStop(0.84, '#101c3a');
+  radial.addColorStop(1.0, '#0a1428');
   ctx.fillStyle = radial;
-  ctx.fillRect(0, 0, 512, 256);
+  ctx.fillRect(0, 0, 1024, 512);
 
-  // Soft inner-wall glass catch light — helps near walls read at FOV edges
-  const highlight = ctx.createLinearGradient(0, 48, 0, 160);
-  highlight.addColorStop(0, 'rgba(232,248,255,0)');
-  highlight.addColorStop(0.45, 'rgba(77,217,245,0.07)');
-  highlight.addColorStop(1, 'rgba(232,248,255,0)');
-  ctx.fillStyle = highlight;
-  ctx.fillRect(0, 48, 512, 112);
+  // Soft glass body — circumferential only (no U banding)
+  const body = ctx.createLinearGradient(0, 80, 0, 432);
+  body.addColorStop(0, 'rgba(24,58,103,0)');
+  body.addColorStop(0.4, 'rgba(40,80,140,0.16)');
+  body.addColorStop(0.5, 'rgba(48,92,155,0.12)');
+  body.addColorStop(0.6, 'rgba(40,80,140,0.16)');
+  body.addColorStop(1, 'rgba(24,58,103,0)');
+  ctx.fillStyle = body;
+  ctx.fillRect(0, 80, 1024, 352);
 
-  // Longitudinal glass striae (U along spline path)
-  for (let i = 0; i < 16; i++) {
-    const x = (i / 16) * 512 + (Math.random() - 0.5) * 10;
-    const w = 1 + Math.random() * 2;
-    ctx.fillStyle = `rgba(200,220,245,${0.018 + Math.random() * 0.03})`;
-    ctx.fillRect(x, 0, w, 256);
+  // Very restrained longitudinal glass catch (constant V → along spline). Avoid starburst density.
+  for (const y of [128, 160, 352, 384]) {
+    ctx.fillStyle = 'rgba(180,200,230,0.035)';
+    ctx.fillRect(0, y, 1024, 1);
+  }
+  // Soft structural seam pair (mid-side walls)
+  for (const y of [148, 364]) {
+    ctx.fillStyle = 'rgba(24,58,103,0.12)';
+    ctx.fillRect(0, y, 1024, 1);
   }
 
-  // Curvature edge darkening (ceiling / lower rim)
-  const edgeTop = ctx.createLinearGradient(0, 0, 0, 40);
-  edgeTop.addColorStop(0, 'rgba(8,14,28,0.5)');
-  edgeTop.addColorStop(1, 'rgba(8,14,28,0)');
+  // Peripheral curvature darken (ceiling / floor in V)
+  const edgeTop = ctx.createLinearGradient(0, 0, 0, 64);
+  edgeTop.addColorStop(0, 'rgba(8,12,24,0.45)');
+  edgeTop.addColorStop(1, 'rgba(8,12,24,0)');
   ctx.fillStyle = edgeTop;
-  ctx.fillRect(0, 0, 512, 40);
-  const edgeBot = ctx.createLinearGradient(0, 216, 0, 256);
-  edgeBot.addColorStop(0, 'rgba(8,14,28,0)');
-  edgeBot.addColorStop(1, 'rgba(8,14,28,0.42)');
+  ctx.fillRect(0, 0, 1024, 64);
+  const edgeBot = ctx.createLinearGradient(0, 448, 0, 512);
+  edgeBot.addColorStop(0, 'rgba(8,12,24,0)');
+  edgeBot.addColorStop(1, 'rgba(8,12,24,0.4)');
   ctx.fillStyle = edgeBot;
-  ctx.fillRect(0, 216, 512, 40);
+  ctx.fillRect(0, 448, 1024, 64);
 
-  // Sparse lab-glass micro variation
-  for (let i = 0; i < 70; i++) {
-    ctx.fillStyle = `rgba(24,58,103,${0.04 + Math.random() * 0.05})`;
-    ctx.fillRect(Math.random() * 512, Math.random() * 256, 1 + (Math.random() > 0.7 ? 1 : 0), 1);
+  // Soft micro grain — avoid aligned constant-U streaks
+  for (let i = 0; i < 160; i++) {
+    ctx.fillStyle = `rgba(20,40,80,${0.04 + Math.random() * 0.06})`;
+    ctx.fillRect(Math.random() * 1024, Math.random() * 512, 1 + Math.random(), 1);
   }
 
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
-  tex.wrapS = THREE.RepeatWrapping;
-  tex.wrapT = THREE.RepeatWrapping;
-  tex.repeat.set(3, 1);
+  // No U-repeat seams (those become transverse rings looking down the tube)
+  tex.wrapS = THREE.ClampToEdgeWrapping;
+  tex.wrapT = THREE.ClampToEdgeWrapping;
+  tex.repeat.set(1, 1);
   tex.magFilter = THREE.LinearFilter;
-  tex.minFilter = THREE.LinearMipmapLinearFilter;
+  tex.minFilter = THREE.LinearFilter;
+  tex.generateMipmaps = false;
   return tex;
 }
 
 const COLUMN_WALL_TEX = createColumnWallTexture();
 
-// Column shell — translucent navy HPLC glass (Phase A)
+// Continuous opaque HPLC glass — fog OFF (scene FogExp2 causes concentric ring banding)
 mats.columnWall = new THREE.MeshBasicMaterial({
   map: COLUMN_WALL_TEX,
   color: 0xffffff,
-  transparent: true,
-  opacity: 0.96,
   side: THREE.BackSide,
   depthWrite: true,
-});
-mats.columnInnerLiner = new THREE.MeshBasicMaterial({
-  color: 0x244e86,
-  transparent: true,
-  opacity: 0.2,
-  side: THREE.BackSide,
-  depthWrite: false,
-});
-mats.columnThickness = new THREE.MeshBasicMaterial({
-  color: 0x101c3a,
-  transparent: true,
-  opacity: 0.48,
-  side: THREE.FrontSide,
-  depthWrite: false,
+  fog: false,
 });
 mats.columnSeam = new THREE.MeshBasicMaterial({
-  color: 0x183a67,
+  color: 0x1a3f70,
   transparent: true,
-  opacity: 0.18,
+  opacity: 0.1,
   depthWrite: false,
+  fog: false,
 });
 mats.columnClamp = new THREE.MeshBasicMaterial({
-  color: 0x183a67,
+  color: 0x152848,
   transparent: true,
-  opacity: 0.7,
+  opacity: 0.28,
   depthWrite: false,
+  fog: false,
 });
 mats.columnClampAccent = new THREE.MeshBasicMaterial({
-  color: 0x2a4a78,
+  color: 0x183a67,
   transparent: true,
-  opacity: 0.5,
+  opacity: 0.22,
   depthWrite: false,
+  fog: false,
 });
 
 let seed = 1337;
@@ -613,14 +609,13 @@ function clearGroup(group) {
 /** Sector visual density multipliers (organic along 1500 m). */
 function columnVisualProfile(distance) {
   const t = distance / RACE_DISTANCE;
-  // Soft fog — walls stay readable; far end darkens toward the detector horizon.
-  // Phase A: keep fog low so the R=18 shell rim stays visible (not a lighting polish pass)
-  if (t < 0.2) return { silica: 0.75, flow: 0.7, mol: 0.45, fog: 0.0022, tint: 0x101c3a };
-  if (t < 0.4) return { silica: 1.15, flow: 0.85, mol: 0.7, fog: 0.0024, tint: 0x112040 };
-  if (t < 0.6) return { silica: 1.0, flow: 1.0, mol: 1.2, fog: 0.0025, tint: 0x122244 };
-  if (t < 0.8) return { silica: 0.95, flow: 1.25, mol: 1.1, fog: 0.0026, tint: 0x101c3a };
-  if (t < 0.967) return { silica: 0.85, flow: 1.1, mol: 0.7, fog: 0.002, tint: 0x0e1a36 };
-  return { silica: 0.6, flow: 0.85, mol: 0.35, fog: 0.0016, tint: 0x101c3a };
+  // Phase A.1: navy-only tints (no bright portal horizon). Scene fog stays minimal.
+  if (t < 0.2) return { silica: 0.75, flow: 0.7, mol: 0.45, fog: 0.0007, tint: 0x0c1834 };
+  if (t < 0.4) return { silica: 1.15, flow: 0.85, mol: 0.7, fog: 0.0008, tint: 0x0c1834 };
+  if (t < 0.6) return { silica: 1.0, flow: 1.0, mol: 1.2, fog: 0.0008, tint: 0x0e1a36 };
+  if (t < 0.8) return { silica: 0.95, flow: 1.25, mol: 1.1, fog: 0.0008, tint: 0x0c1834 };
+  if (t < 0.967) return { silica: 0.85, flow: 1.1, mol: 0.7, fog: 0.0007, tint: 0x0a1428 };
+  return { silica: 0.6, flow: 0.85, mol: 0.35, fog: 0.0006, tint: 0x0a1228 };
 }
 
 const flowParticles = [];
@@ -755,57 +750,29 @@ function pickParticleKey(preferSmall = false) {
 }
 
 /**
- * Phase A — COLUMN SHELL only.
- * Continuous TubeGeometry on the race CatmullRom spline (`curve`).
- * No road, neon rings, portals, or arches.
+ * Phase A.1 — ONE continuous TubeGeometry inner wall on the race spline.
+ * Cylinder reads from surface / fog / curvature — never concentric rings.
  */
 function buildColumnStructure() {
-  const tubularSegments = Math.floor(340 * (qualityState.mode === 'low' ? 0.55 : 1));
-  const radial = qualityState.mode === 'low' ? 18 : 32;
+  const tubularSegments = Math.floor(520 * (qualityState.mode === 'low' ? 0.55 : 1));
+  const radial = qualityState.mode === 'low' ? 36 : 64;
   const R = GAME_CONFIG.columnRadius;
 
-  // PRIMARY INNER WALL — BackSide tube; player is inside the HPLC column
+  // Single continuous inner wall — opaque BackSide; player is inside the HPLC column
   const innerGeo = new THREE.TubeGeometry(curve, tubularSegments, R, radial, false);
   const wallMesh = new THREE.Mesh(innerGeo, mats.columnWall);
   wallMesh.name = 'columnWall';
   wallMesh.renderOrder = -2;
   envGroup.add(wallMesh);
 
-  // Subtle inset liner — translucent glass depth
-  const linerGeo = new THREE.TubeGeometry(
-    curve,
-    Math.floor(tubularSegments * 0.85),
-    R - 0.28,
-    Math.max(14, radial - 6),
-    false
-  );
-  const linerMesh = new THREE.Mesh(linerGeo, mats.columnInnerLiner);
-  linerMesh.name = 'columnInnerLiner';
-  linerMesh.renderOrder = -1;
-  envGroup.add(linerMesh);
-
-  // Thin outer skin — wall thickness only (close; avoids portal silhouette)
-  const outerGeo = new THREE.TubeGeometry(
-    curve,
-    Math.floor(tubularSegments * 0.7),
-    R + 0.42,
-    Math.max(12, radial - 8),
-    false
-  );
-  const outerMesh = new THREE.Mesh(outerGeo, mats.columnThickness);
-  outerMesh.name = 'columnThickness';
-  outerMesh.renderOrder = -3;
-  envGroup.add(outerMesh);
-
-  // Thin longitudinal glass seams + sparse scientific clamps
-  buildColumnSeams(tubularSegments, R - 0.06);
-  buildColumnClamps(R - 0.18);
+  // Phase A.1: structural seams live in the wall texture (true longitudinal UV).
+  // No extra TubeGeometry accents — those read as rings when foreshortened.
 }
 
-/** Thin longitudinal glass seams — L/R only, very subtle (no crosshair). */
+/** Thin longitudinal glass seams — L/R only, very subtle (no crosshair, no rings). */
 function buildColumnSeams(tubularSegments, radius) {
-  const angles = [-1.05, 1.05]; // left/right walls only
-  const seamSegs = Math.floor(tubularSegments * 0.65);
+  const angles = [-1.12, 1.12]; // left/right walls only
+  const seamSegs = Math.floor(tubularSegments * 0.7);
   for (let ai = 0; ai < angles.length; ai++) {
     const ang = angles[ai];
     const pts = [];
@@ -818,7 +785,7 @@ function buildColumnSeams(tubularSegments, radius) {
       pts.push(p);
     }
     const seamCurve = new THREE.CatmullRomCurve3(pts, false, 'catmullrom', 0.15);
-    const seamGeo = new THREE.TubeGeometry(seamCurve, seamSegs, 0.016, 3, false);
+    const seamGeo = new THREE.TubeGeometry(seamCurve, seamSegs, 0.012, 3, false);
     const seam = new THREE.Mesh(seamGeo, mats.columnSeam);
     seam.renderOrder = -1;
     envGroup.add(seam);
@@ -826,31 +793,27 @@ function buildColumnSeams(tubularSegments, radius) {
 }
 
 /**
- * Sparse lab clamp / connector fittings along the column wall.
- * Scientific, subtle — NOT repeating giant rings or tunnel segments.
+ * Sparse longitudinal wall fittings — technical glass segments, not transverse rings.
  */
 function buildColumnClamps(radius) {
-  const count = qualityState.mode === 'low' ? 6 : 9;
+  const count = qualityState.mode === 'low' ? 4 : 6;
   for (let i = 0; i < count; i++) {
-    const d = 120 + i * ((RACE_DISTANCE - 280) / Math.max(1, count - 1));
-    if (d > DETECTOR_DISTANCE - 40) continue;
+    const d = 180 + i * ((RACE_DISTANCE - 360) / Math.max(1, count - 1));
+    if (d > DETECTOR_DISTANCE - 60) continue;
     const f = frameAt(THREE.MathUtils.clamp(d / RACE_DISTANCE, 0, 0.999));
     const sideSign = i % 2 === 0 ? 1 : -1;
-    const elev = (i % 3 === 0 ? 0.35 : i % 3 === 1 ? -0.25 : 0.1);
+    const elev = (i % 3 === 0 ? 0.22 : i % 3 === 1 ? -0.18 : 0.05);
 
     const clamp = new THREE.Group();
     const plate = new THREE.Mesh(geo.pixel, mats.columnClamp);
-    plate.scale.set(0.55, 1.1, 0.18);
-    const bolt = new THREE.Mesh(geo.pixel, mats.columnClampAccent);
-    bolt.scale.set(0.22, 0.22, 0.28);
-    bolt.position.z = 0.18;
-    const tip = new THREE.Mesh(geo.pixel, mats.columnClamp);
-    tip.scale.set(0.9, 0.16, 0.16);
-    tip.position.y = 0.55;
-    clamp.add(plate, bolt, tip);
+    plate.scale.set(0.35, 1.35, 0.12); // elongated along wall, not a ring
+    const tip = new THREE.Mesh(geo.pixel, mats.columnClampAccent);
+    tip.scale.set(0.12, 0.9, 0.1);
+    tip.position.x = 0.18;
+    clamp.add(plate, tip);
 
     clamp.position.copy(f.p)
-      .addScaledVector(f.side, sideSign * radius * 0.92)
+      .addScaledVector(f.side, sideSign * radius * 0.94)
       .addScaledVector(f.trueUp, elev * radius);
     clamp.lookAt(f.p);
     envGroup.add(clamp);
@@ -1084,10 +1047,7 @@ function applyEnvironmentDebugVisibility() {
     infraGroup.visible = false;
     detectorGroup.visible = false;
     ambientMolecules.forEach((m) => { if (m.mesh) m.mesh.visible = false; });
-    mats.columnWall.opacity = 0.9;
-    if (mats.columnInnerLiner) mats.columnInnerLiner.opacity = 0.18;
-    if (mats.columnThickness) mats.columnThickness.opacity = 0.5;
-    if (mats.columnSeam) mats.columnSeam.opacity = 0.32;
+    if (mats.columnSeam) mats.columnSeam.opacity = 0.14;
     return;
   }
 
@@ -1097,10 +1057,7 @@ function applyEnvironmentDebugVisibility() {
     infraGroup.visible = false;
     detectorGroup.visible = true;
     ambientMolecules.forEach((m) => { if (m.mesh) m.mesh.visible = false; });
-    mats.columnWall.opacity = 0.88;
-    if (mats.columnInnerLiner) mats.columnInnerLiner.opacity = 0.18;
-    if (mats.columnThickness) mats.columnThickness.opacity = 0.5;
-    if (mats.columnSeam) mats.columnSeam.opacity = 0.28;
+    if (mats.columnSeam) mats.columnSeam.opacity = 0.12;
     return;
   }
 
@@ -1109,15 +1066,11 @@ function applyEnvironmentDebugVisibility() {
   infraGroup.visible = !DEBUG_SILICA;
   detectorGroup.visible = true;
   ambientMolecules.forEach((m) => { if (m.mesh) m.mesh.visible = true; });
-  mats.columnWall.opacity = 0.9;
-  if (mats.columnInnerLiner) mats.columnInnerLiner.opacity = 0.18;
-  if (mats.columnThickness) mats.columnThickness.opacity = 0.5;
-  if (mats.columnSeam) mats.columnSeam.opacity = 0.28;
+  if (mats.columnSeam) mats.columnSeam.opacity = 0.12;
 
   if (DEBUG_SILICA) {
     flowGroup.visible = false;
     infraGroup.visible = false;
-    mats.columnWall.opacity = 0.55;
   }
 }
 
