@@ -20,9 +20,9 @@ const GAME_CONFIG = {
     baseFov: 62,
     boostFov: 71,
   },
-  // Phase A (env 3.2): larger HPLC shell so Vita reads small vs column (ref ~10% height)
-  // Was 10.4 → 12.25; now 15.0 (~44% over original) for reference-scale circumference
-  columnRadius: 15.0,
+  // Phase A (env 3.2): wide HPLC shell — Vita small vs column (closer to concept art)
+  // Progression: 10.4 → 12.25 → 15.0 → 18.0 (~73% over original)
+  columnRadius: 18.0,
   leaderboardKey: 'chromaracers_vitamin_rush_lb_v1',
   maxLeaderboard: 10,
   character: 'Vita C',
@@ -314,7 +314,8 @@ function applyQuality(mode, fpsHint = 60) {
 const mount = $('game');
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x101c3a);
-scene.fog = new THREE.FogExp2(0x101c3a, 0.0034);
+// Slightly lighter fog so the wider shell rim stays readable at frame edges
+scene.fog = new THREE.FogExp2(0x101c3a, 0.0028);
 
 const camera = new THREE.PerspectiveCamera(
   GAME_CONFIG.camera.baseFov,
