@@ -643,19 +643,7 @@ function buildColumnStructure() {
   });
   envGroup.add(new THREE.Mesh(outerGeo, mats.columnOuter));
 
-  // Very soft bed cue — not a glowing road; keeps floor readable under packed walls
-  const bedPts = [];
-  for (let i = 0; i <= 100; i++) bedPts.push(worldAt((i / 100) * RACE_DISTANCE, 0, -0.2));
-  const bedCurve = new THREE.CatmullRomCurve3(bedPts, false, 'catmullrom', 0.2);
-  envGroup.add(new THREE.Mesh(
-    new THREE.TubeGeometry(bedCurve, 140, 3.2, 8, false),
-    new THREE.MeshBasicMaterial({
-      color: 0x1a2848,
-      transparent: true,
-      opacity: 0.06,
-      depthWrite: false,
-    })
-  ));
+  // No road ribbon — column shell alone provides subtle floor curvature.
 }
 
 /**
@@ -699,7 +687,7 @@ function buildSilicaField() {
       for (let e = 0; e < elevSlots; e++) {
         if (rnd() > density) continue;
         const t = e / (elevSlots - 1);
-        const elev = (t - 0.5) * 1.68;
+        const elev = (t - 0.5) * 1.85;
         const dd = d0 + (rnd() - 0.5) * step * 0.95;
 
         // Structural near-wall cluster
@@ -764,24 +752,25 @@ function buildSilicaField() {
     }
   }
 
-  // Ceiling/floor shoulders near L/R walls — do not close corridor
-  const stitchStep = Math.max(2.2, 2.6 / Math.max(0.55, mul));
+  // Ceiling/floor shoulders near L/R walls — enclose the tube without closing corridor
+  const stitchStep = Math.max(1.7, 2.0 / Math.max(0.55, mul));
   for (let d0 = 2; d0 < RACE_DISTANCE - 4; d0 += stitchStep) {
     for (const upSign of [-1, 1]) {
-      for (let n = 0; n < 2; n++) {
-        if (rnd() > 0.82) continue;
-        const r = 9.3 + rnd() * 0.75;
-        let lateral = (rnd() > 0.5 ? 1 : -1) * (GAME_CONFIG.laneWidth * 2.25 + rnd() * 3.5);
-        let lift = upSign * r * (0.7 + rnd() * 0.24);
+      for (let n = 0; n < 4; n++) {
+        if (rnd() > 0.88) continue;
+        const r = 9.35 + rnd() * 0.7;
+        // Bias toward side walls; allow higher |lift| so packed bed wraps toward ceiling/floor
+        let lateral = (rnd() > 0.5 ? 1 : -1) * (GAME_CONFIG.laneWidth * 2.0 + rnd() * 4.2);
+        let lift = upSign * r * (0.78 + rnd() * 0.2);
         const hyp = Math.hypot(lateral, lift) || 1;
         lateral = (lateral / hyp) * r;
         lift = (lift / hyp) * r;
-        if (Math.abs(lateral) < GAME_CONFIG.laneWidth * 1.75) {
-          lateral = Math.sign(lateral || 1) * (GAME_CONFIG.laneWidth * 1.9 + rnd() * 0.5);
+        if (Math.abs(lateral) < GAME_CONFIG.laneWidth * 1.8) {
+          lateral = Math.sign(lateral || 1) * (GAME_CONFIG.laneWidth * 1.95 + rnd() * 0.55);
         }
-        if (rnd() < 0.65) {
+        if (rnd() < 0.7) {
           const key = pickClusterKey(0.9);
-          queue(key, d0 + rnd() * stitchStep, lateral, lift, clusterScale(key) * 0.86 * debugScale);
+          queue(key, d0 + rnd() * stitchStep, lateral, lift, clusterScale(key) * 0.9 * debugScale);
         } else {
           queue(pickParticleKey(), d0 + rnd() * stitchStep, lateral, lift, particleScale() * debugScale);
         }
