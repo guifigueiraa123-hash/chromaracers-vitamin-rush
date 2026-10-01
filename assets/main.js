@@ -20,7 +20,8 @@ const GAME_CONFIG = {
     baseFov: 62,
     boostFov: 71,
   },
-  columnRadius: 10.4,
+  // Phase A (env 3.2): ~18% larger than prior 10.4 — more microscopic column presence
+  columnRadius: 12.25,
   leaderboardKey: 'chromaracers_vitamin_rush_lb_v1',
   maxLeaderboard: 10,
   character: 'Vita C',
@@ -311,8 +312,8 @@ function applyQuality(mode, fpsHint = 60) {
 // Three.js scene bootstrap
 const mount = $('game');
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x0d1530);
-scene.fog = new THREE.FogExp2(0x0d1530, 0.0036);
+scene.background = new THREE.Color(0x101c3a);
+scene.fog = new THREE.FogExp2(0x101c3a, 0.0034);
 
 const camera = new THREE.PerspectiveCamera(
   GAME_CONFIG.camera.baseFov,
@@ -444,6 +445,10 @@ const DEBUG_SILICA = false;
  * Not exposed in player-facing UI.
  */
 const DEBUG_COLUMN = false;
+/** Dev-only: emphasize mobile-phase flow (Phase D). Default off. */
+const DEBUG_FLOW = false;
+/** Dev-only: emphasize molecular traffic (Phase E). Default off. */
+const DEBUG_MOLECULES = false;
 /**
  * Dev-only detector focus mode.
  * When true: hide silica/flow/molecules/unrelated decor; show column + detector clearly.
@@ -467,8 +472,10 @@ scene.add(detectorGroup);
 const texLoader = new THREE.TextureLoader();
 
 /**
- * Laboratory glass column interior texture.
- * Palette: #0D1530 / #152848 / #243A62 / subtle #3A315E — not neon cyberpunk grid.
+ * Phase A — chromatographic column inner-wall texture.
+ * Palette lock: #101C3A deep navy / #183A67 structural blue.
+ * Subtle top (calmer) vs bottom (slightly brighter) orientation only —
+ * not a road, not purple fill, not neon grid.
  */
 function createColumnWallTexture() {
   const c = document.createElement('canvas');
@@ -476,66 +483,57 @@ function createColumnWallTexture() {
   c.height = 256;
   const ctx = c.getContext('2d');
 
-  // Deep navy glass base with soft blue-violet curvature (V = around tube)
+  // Circumferential glass gradient (V wraps the tube): ceiling darker, mid walls structural, lower slightly clearer
   const radial = ctx.createLinearGradient(0, 0, 0, 256);
-  radial.addColorStop(0, '#0d1530');
-  radial.addColorStop(0.18, '#152848');
-  radial.addColorStop(0.38, '#1e3560');
-  radial.addColorStop(0.5, '#2a4570');
-  radial.addColorStop(0.62, '#243a62');
-  radial.addColorStop(0.78, '#1a2a4a');
-  radial.addColorStop(0.9, '#3a315e');
-  radial.addColorStop(1, '#0d1530');
+  radial.addColorStop(0, '#0c152c'); // upper seam toward ceiling
+  radial.addColorStop(0.12, '#101c3a'); // calm upper mobile-phase zone cue
+  radial.addColorStop(0.32, '#142848');
+  radial.addColorStop(0.5, '#183a67'); // structural mid-wall
+  radial.addColorStop(0.68, '#152f56');
+  radial.addColorStop(0.85, '#122640');
+  radial.addColorStop(1, '#0c152c');
   ctx.fillStyle = radial;
   ctx.fillRect(0, 0, 512, 256);
 
-  // Soft glass highlight band (inner-wall catch light)
-  const highlight = ctx.createLinearGradient(0, 40, 0, 140);
+  // Soft inner-wall glass catch light (mid band) — translucent depth, not neon
+  const highlight = ctx.createLinearGradient(0, 56, 0, 150);
   highlight.addColorStop(0, 'rgba(232,248,255,0)');
-  highlight.addColorStop(0.45, 'rgba(93,229,255,0.07)');
+  highlight.addColorStop(0.45, 'rgba(77,217,245,0.035)');
   highlight.addColorStop(1, 'rgba(232,248,255,0)');
   ctx.fillStyle = highlight;
-  ctx.fillRect(0, 48, 512, 88);
+  ctx.fillRect(0, 56, 512, 94);
 
-  // Secondary mid-tone band — translucent glass depth
-  const midBand = ctx.createLinearGradient(0, 100, 0, 200);
-  midBand.addColorStop(0, 'rgba(36,58,98,0)');
-  midBand.addColorStop(0.5, 'rgba(58,49,94,0.12)');
-  midBand.addColorStop(1, 'rgba(21,40,72,0)');
-  ctx.fillStyle = midBand;
-  ctx.fillRect(0, 100, 512, 100);
-
-  // Very subtle longitudinal reflections (U along path) — glass striae, not neon seams
-  for (let i = 0; i < 22; i++) {
-    const x = (i / 22) * 512 + (Math.random() - 0.5) * 8;
-    const w = 1 + Math.random() * 2.2;
-    ctx.fillStyle = `rgba(232,248,255,${0.02 + Math.random() * 0.035})`;
+  // Longitudinal glass striae (U along spline path)
+  for (let i = 0; i < 16; i++) {
+    const x = (i / 16) * 512 + (Math.random() - 0.5) * 10;
+    const w = 1 + Math.random() * 2;
+    ctx.fillStyle = `rgba(200,220,245,${0.018 + Math.random() * 0.03})`;
     ctx.fillRect(x, 0, w, 256);
   }
 
-  // Controlled edge darkening near floor/ceiling (curvature cue)
-  const edgeTop = ctx.createLinearGradient(0, 0, 0, 36);
-  edgeTop.addColorStop(0, 'rgba(8,12,24,0.45)');
-  edgeTop.addColorStop(1, 'rgba(8,12,24,0)');
+  // Curvature edge darkening (ceiling / lower rim)
+  const edgeTop = ctx.createLinearGradient(0, 0, 0, 40);
+  edgeTop.addColorStop(0, 'rgba(8,14,28,0.5)');
+  edgeTop.addColorStop(1, 'rgba(8,14,28,0)');
   ctx.fillStyle = edgeTop;
-  ctx.fillRect(0, 0, 512, 36);
-  const edgeBot = ctx.createLinearGradient(0, 220, 0, 256);
-  edgeBot.addColorStop(0, 'rgba(8,12,24,0)');
-  edgeBot.addColorStop(1, 'rgba(8,12,24,0.4)');
+  ctx.fillRect(0, 0, 512, 40);
+  const edgeBot = ctx.createLinearGradient(0, 216, 0, 256);
+  edgeBot.addColorStop(0, 'rgba(8,14,28,0)');
+  edgeBot.addColorStop(1, 'rgba(8,14,28,0.42)');
   ctx.fillStyle = edgeBot;
-  ctx.fillRect(0, 220, 512, 36);
+  ctx.fillRect(0, 216, 512, 40);
 
-  // Sparse micro variation (lab glass, not silica grain clusters)
-  for (let i = 0; i < 90; i++) {
-    ctx.fillStyle = `rgba(90,120,170,${0.015 + Math.random() * 0.03})`;
-    ctx.fillRect(Math.random() * 512, Math.random() * 256, 1, 1);
+  // Sparse lab-glass micro variation
+  for (let i = 0; i < 70; i++) {
+    ctx.fillStyle = `rgba(24,58,103,${0.04 + Math.random() * 0.05})`;
+    ctx.fillRect(Math.random() * 512, Math.random() * 256, 1 + (Math.random() > 0.7 ? 1 : 0), 1);
   }
 
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
   tex.wrapS = THREE.RepeatWrapping;
   tex.wrapT = THREE.RepeatWrapping;
-  tex.repeat.set(4, 1);
+  tex.repeat.set(3, 1);
   tex.magFilter = THREE.LinearFilter;
   tex.minFilter = THREE.LinearMipmapLinearFilter;
   return tex;
@@ -543,45 +541,45 @@ function createColumnWallTexture() {
 
 const COLUMN_WALL_TEX = createColumnWallTexture();
 
-// Column shell — laboratory glass/steel, distinct from lavender silica
+// Column shell — translucent navy HPLC glass (Phase A)
 mats.columnWall = new THREE.MeshBasicMaterial({
   map: COLUMN_WALL_TEX,
   color: 0xffffff,
   transparent: true,
-  opacity: 0.94,
+  opacity: 0.92,
   side: THREE.BackSide,
   depthWrite: true,
 });
 mats.columnInnerLiner = new THREE.MeshBasicMaterial({
-  color: 0x243a62,
+  color: 0x183a67,
   transparent: true,
-  opacity: 0.22,
+  opacity: 0.16,
   side: THREE.BackSide,
   depthWrite: false,
 });
 mats.columnThickness = new THREE.MeshBasicMaterial({
-  color: 0x0d1530,
+  color: 0x101c3a,
   transparent: true,
-  opacity: 0.5,
+  opacity: 0.48,
   side: THREE.FrontSide,
   depthWrite: false,
 });
 mats.columnSeam = new THREE.MeshBasicMaterial({
-  color: 0x4a6088,
+  color: 0x183a67,
   transparent: true,
-  opacity: 0.14,
+  opacity: 0.18,
   depthWrite: false,
 });
 mats.columnClamp = new THREE.MeshBasicMaterial({
-  color: 0x243a62,
+  color: 0x183a67,
   transparent: true,
-  opacity: 0.75,
+  opacity: 0.7,
   depthWrite: false,
 });
 mats.columnClampAccent = new THREE.MeshBasicMaterial({
-  color: 0x3a315e,
+  color: 0x2a4a78,
   transparent: true,
-  opacity: 0.55,
+  opacity: 0.5,
   depthWrite: false,
 });
 
@@ -756,47 +754,51 @@ function pickParticleKey(preferSmall = false) {
 }
 
 /**
- * Chromatographic COLUMN SHELL — laboratory glass cylinder along the race spline.
- * No road ribbon, neon rings, portals, or giant arches.
+ * Phase A — COLUMN SHELL only.
+ * Continuous TubeGeometry on the race CatmullRom spline (`curve`).
+ * No road, neon rings, portals, or arches.
  */
 function buildColumnStructure() {
-  const tubularSegments = Math.floor(320 * (qualityState.mode === 'low' ? 0.55 : 1));
-  const radial = qualityState.mode === 'low' ? 16 : 28;
+  const tubularSegments = Math.floor(340 * (qualityState.mode === 'low' ? 0.55 : 1));
+  const radial = qualityState.mode === 'low' ? 18 : 32;
   const R = GAME_CONFIG.columnRadius;
 
-  // PRIMARY INNER WALL — continuous BackSide tube (player is inside)
+  // PRIMARY INNER WALL — BackSide tube; player is inside the HPLC column
   const innerGeo = new THREE.TubeGeometry(curve, tubularSegments, R, radial, false);
   const wallMesh = new THREE.Mesh(innerGeo, mats.columnWall);
+  wallMesh.name = 'columnWall';
   wallMesh.renderOrder = -2;
   envGroup.add(wallMesh);
 
-  // Subtle inset liner — glass depth cue
+  // Subtle inset liner — translucent glass depth
   const linerGeo = new THREE.TubeGeometry(
     curve,
     Math.floor(tubularSegments * 0.85),
-    R - 0.22,
-    Math.max(12, radial - 6),
+    R - 0.28,
+    Math.max(14, radial - 6),
     false
   );
   const linerMesh = new THREE.Mesh(linerGeo, mats.columnInnerLiner);
+  linerMesh.name = 'columnInnerLiner';
   linerMesh.renderOrder = -1;
   envGroup.add(linerMesh);
 
-  // Thin outer skin — wall thickness only (kept close; avoids portal silhouette)
+  // Thin outer skin — wall thickness only (close; avoids portal silhouette)
   const outerGeo = new THREE.TubeGeometry(
     curve,
     Math.floor(tubularSegments * 0.7),
-    R + 0.38,
+    R + 0.42,
     Math.max(12, radial - 8),
     false
   );
   const outerMesh = new THREE.Mesh(outerGeo, mats.columnThickness);
+  outerMesh.name = 'columnThickness';
   outerMesh.renderOrder = -3;
   envGroup.add(outerMesh);
 
   // Thin longitudinal glass seams + sparse scientific clamps
-  buildColumnSeams(tubularSegments, R - 0.05);
-  buildColumnClamps(R - 0.15);
+  buildColumnSeams(tubularSegments, R - 0.06);
+  buildColumnClamps(R - 0.18);
 }
 
 /** Thin longitudinal glass seams — L/R only, very subtle (no crosshair). */
@@ -2270,7 +2272,8 @@ function snapCameraToPlayer() {
 
 window.CHROMARACERS = {
   GAME_CONFIG, RACE_DISTANCE, SECTORS, state, Storage, rivals, vita, spriteActors,
-  DEBUG_SILICA, DEBUG_COLUMN, DEBUG_DETECTOR, DETECTOR_DISTANCE,
+  DEBUG_SILICA, DEBUG_COLUMN, DEBUG_FLOW, DEBUG_MOLECULES, DEBUG_DETECTOR, DETECTOR_DISTANCE,
+  columnRadius: GAME_CONFIG.columnRadius,
   silicaStats, silicaGroup, envGroup, detectorGroup,
   snapCameraToPlayer, applyEnvironmentDebugVisibility, applyDebugColumnGameplayHide,
   placeDetector, updateDetectorApproach,
