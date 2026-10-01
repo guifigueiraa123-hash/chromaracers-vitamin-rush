@@ -741,12 +741,11 @@ function buildSilicaField() {
   }
 
   // FAR small particles — depth layer
-  const farStep = Math.max(4.4, 5.1 / Math.max(0.55, mul));
-  for (let d0 = 12; d0 < RACE_DISTANCE - 20; d0 += farStep) {
+  const farStep = Math.max(4.0, 4.6 / Math.max(0.55, mul));
+  for (let d0 = 14; d0 < RACE_DISTANCE - 20; d0 += farStep) {
     for (const sideSign of [-1, 1]) {
-      if (rnd() > 0.8) continue;
-      const elev = (rnd() - 0.5) * 1.05;
-      const p = sampleWallPacked(sideSign, 9.55, 10.08, elev);
+      if (rnd() > 0.82) continue;
+      const p = sampleWallPacked(sideSign, 9.6, 10.1, midWallElev());
       queue(
         pickParticleKey(true),
         d0 + rnd() * farStep * 0.55,
