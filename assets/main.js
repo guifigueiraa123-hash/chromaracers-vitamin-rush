@@ -311,8 +311,8 @@ function applyQuality(mode, fpsHint = 60) {
 // Three.js scene bootstrap
 const mount = $('game');
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x071326);
-scene.fog = new THREE.FogExp2(0x071326, 0.009);
+scene.background = new THREE.Color(0x1a2040);
+scene.fog = new THREE.FogExp2(0x1a2040, 0.0048);
 
 const camera = new THREE.PerspectiveCamera(
   GAME_CONFIG.camera.baseFov,
@@ -340,13 +340,15 @@ renderer.setSize(innerWidth, innerHeight);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 mount.appendChild(renderer.domElement);
 
-const hemi = new THREE.HemisphereLight(0x5de5ff, 0x17233d, 0.85);
+const hemi = new THREE.HemisphereLight(0x8ec8ff, 0x1a1040, 0.7);
 scene.add(hemi);
-const keyLight = new THREE.DirectionalLight(0xb8e8ff, 0.9);
-keyLight.position.set(4, 10, 2);
+const keyLight = new THREE.DirectionalLight(0xc8b8ff, 0.65);
+keyLight.position.set(3, 8, 2);
 scene.add(keyLight);
-const accent = new THREE.PointLight(0xf28c28, 0.55, 48, 2);
+const accent = new THREE.PointLight(0xf28c28, 0.45, 42, 2);
 scene.add(accent);
+const columnFill = new THREE.PointLight(0x6a8cff, 0.35, 55, 2);
+scene.add(columnFill);
 
 const clock = new THREE.Clock();
 const curve = buildTrackCurve(RACE_DISTANCE);
@@ -384,68 +386,76 @@ function getSector(distance) {
   return SECTORS[0];
 }
 
-// Shared geometries / materials (pooling)
+// Shared geometries / materials (pooling) — arcade 16-bit palette, not PBR
 const geo = {
   sphereS: new THREE.SphereGeometry(1, 6, 5),
   sphereM: new THREE.SphereGeometry(1, 8, 6),
   icosa: new THREE.IcosahedronGeometry(1, 0),
-  torusRing: new THREE.TorusGeometry(GAME_CONFIG.columnRadius + 1.2, 0.2, 6, 24),
-  torusInner: new THREE.TorusGeometry(GAME_CONFIG.columnRadius - 0.5, 0.06, 5, 24),
   bubble: new THREE.SphereGeometry(1, 8, 6),
+  pixel: new THREE.BoxGeometry(1, 1, 1),
+  crystal: new THREE.OctahedronGeometry(1, 0),
+  panel: new THREE.PlaneGeometry(2.4, 3.2),
+  strut: new THREE.BoxGeometry(0.22, 0.22, 2.8),
 };
 
 const mats = {
-  silica: new THREE.MeshStandardMaterial({
-    color: 0x4a6ec8, emissive: 0x16306a, emissiveIntensity: 0.35, roughness: 0.86, metalness: 0.04,
+  flowPixel: new THREE.MeshBasicMaterial({ color: 0x5de5ff, transparent: true, opacity: 0.85 }),
+  flowSoft: new THREE.MeshBasicMaterial({
+    color: 0x3ecfff, transparent: true, opacity: 0.045, depthWrite: false, blending: THREE.AdditiveBlending,
   }),
-  silicaWarm: new THREE.MeshStandardMaterial({
-    color: 0x5a78d0, emissive: 0x1a2860, emissiveIntensity: 0.28, roughness: 0.88, metalness: 0.03,
-  }),
-  ring: new THREE.MeshStandardMaterial({
-    color: 0x274568, emissive: 0x0a3058, emissiveIntensity: 0.65, metalness: 0.75, roughness: 0.38,
-  }),
-  ringCyan: new THREE.MeshBasicMaterial({ color: 0x39eaff, transparent: true, opacity: 0.55 }),
-  flow: [
-    new THREE.MeshBasicMaterial({ color: 0x35cfff, transparent: true, opacity: 0.72 }),
-    new THREE.MeshBasicMaterial({ color: 0x7cffff, transparent: true, opacity: 0.82 }),
-    new THREE.MeshBasicMaterial({ color: 0x35cfff, transparent: true, opacity: 0.72 }),
+  moleculeAmb: [
+    new THREE.MeshBasicMaterial({ color: 0xf28c28 }),
+    new THREE.MeshBasicMaterial({ color: 0x5de5ff }),
+    new THREE.MeshBasicMaterial({ color: 0x43c95a }),
+    new THREE.MeshBasicMaterial({ color: 0xd9368a }),
+    new THREE.MeshBasicMaterial({ color: 0x9b6dff }),
   ],
-  flowGlow: new THREE.MeshBasicMaterial({
-    color: 0x1ceaff, transparent: true, opacity: 0.08, blending: THREE.AdditiveBlending, depthWrite: false,
-  }),
   molecule: new THREE.MeshBasicMaterial({ color: 0xffd447, transparent: true, opacity: 0.95 }),
   energy: new THREE.MeshBasicMaterial({ color: 0x59f2ff, transparent: true, opacity: 0.95 }),
   vitamin: new THREE.MeshBasicMaterial({ color: 0x43c95a, transparent: true, opacity: 0.95 }),
-  obstacleSilica: new THREE.MeshStandardMaterial({
-    color: 0x6a8ad8, emissive: 0x1a3068, emissiveIntensity: 0.4, roughness: 0.7, metalness: 0.1,
-  }),
-  obstacleBubble: new THREE.MeshStandardMaterial({
-    color: 0x5de5ff, emissive: 0x0a4a60, emissiveIntensity: 0.35, transparent: true, opacity: 0.72, roughness: 0.25,
-  }),
-  obstacleConc: new THREE.MeshStandardMaterial({
-    color: 0xf28c28, emissive: 0x5a2808, emissiveIntensity: 0.45, roughness: 0.55,
-  }),
-  obstacleInterf: new THREE.MeshStandardMaterial({
-    color: 0xd9368a, emissive: 0x401028, emissiveIntensity: 0.4, roughness: 0.5,
+  obstacleSilica: new THREE.MeshBasicMaterial({ color: 0x9a86d8 }),
+  obstacleBubble: new THREE.MeshBasicMaterial({ color: 0x5de5ff, transparent: true, opacity: 0.72 }),
+  obstacleConc: new THREE.MeshBasicMaterial({ color: 0xf28c28 }),
+  obstacleInterf: new THREE.MeshBasicMaterial({ color: 0xd9368a }),
+  infra: new THREE.MeshBasicMaterial({ color: 0x243a62 }),
+  infraAccent: new THREE.MeshBasicMaterial({ color: 0x3a6ea8 }),
+  detectorBody: new THREE.MeshBasicMaterial({ color: 0x1c2e4d }),
+  detectorAccent: new THREE.MeshBasicMaterial({ color: 0x5de5ff }),
+  detectorUv: new THREE.MeshBasicMaterial({
+    color: 0xc9a0ff, transparent: true, opacity: 0.55, blending: THREE.AdditiveBlending, depthWrite: false,
   }),
 };
 
 // ---------------------------------------------------------------------------
-// Environment: chromatographic column
+// ColumnEnvironment — chromatographic column following the race spline
+/** Dev-only: denser silica visibility; hide some non-silica env when true. Not exposed in UI. */
+const DEBUG_SILICA = false;
+
 const envGroup = new THREE.Group();
 scene.add(envGroup);
+const silicaGroup = new THREE.Group();
+scene.add(silicaGroup);
+const flowGroup = new THREE.Group();
+scene.add(flowGroup);
+const infraGroup = new THREE.Group();
+scene.add(infraGroup);
+const detectorGroup = new THREE.Group();
+scene.add(detectorGroup);
 
 const texLoader = new THREE.TextureLoader();
-const silicaTex = texLoader.load('./assets/silica-back.png');
-silicaTex.colorSpace = THREE.SRGBColorSpace;
-silicaTex.wrapS = silicaTex.wrapT = THREE.RepeatWrapping;
-silicaTex.repeat.set(4, 2);
 
-// Soft cylindrical wall segments along path (reused material)
-const wallMat = new THREE.MeshBasicMaterial({
-  map: silicaTex,
+// Column shell — light cylindrical container (must stay visible; must not become a cave)
+mats.columnWall = new THREE.MeshBasicMaterial({
+  color: 0x45406a,
   transparent: true,
-  opacity: 0.22,
+  opacity: 0.58,
+  side: THREE.BackSide,
+  depthWrite: false,
+});
+mats.columnInnerContour = new THREE.MeshBasicMaterial({
+  color: 0x8a78b8,
+  transparent: true,
+  opacity: 0.26,
   side: THREE.BackSide,
   depthWrite: false,
 });
@@ -456,121 +466,612 @@ function rnd() {
   return seed / 4294967296;
 }
 
-function buildEnvironment() {
-  while (envGroup.children.length) {
-    envGroup.remove(envGroup.children[0]);
-  }
-
-  const samples = Math.floor(72 / qualityState.ringStep);
-  for (let i = 0; i < samples; i++) {
-    const d = (i / (samples - 1)) * RACE_DISTANCE;
-    const f = frameAt(d / RACE_DISTANCE);
-    const ring = new THREE.Group();
-    ring.position.copy(f.p);
-    ring.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), f.tangent);
-
-    const torus = new THREE.Mesh(geo.torusRing, mats.ring);
-    torus.rotation.x = Math.PI / 2;
-    ring.add(torus);
-
-    const inner = new THREE.Mesh(geo.torusInner, mats.ringCyan);
-    inner.rotation.x = Math.PI / 2;
-    ring.add(inner);
-
-    // short wall shell for silica texture presence
-    if (i % 3 === 0) {
-      const shell = new THREE.Mesh(
-        new THREE.CylinderGeometry(GAME_CONFIG.columnRadius + 0.2, GAME_CONFIG.columnRadius + 0.2, 28, 16, 1, true),
-        wallMat
-      );
-      shell.rotation.x = Math.PI / 2;
-      ring.add(shell);
+function disposeObject3D(obj) {
+  obj.traverse((child) => {
+    if (child.geometry && !Object.values(geo).includes(child.geometry)) {
+      child.geometry.dispose?.();
     }
-    envGroup.add(ring);
-  }
+    if (child.userData?.disposeMaterial && child.material) {
+      child.material.dispose?.();
+    }
+  });
+}
 
-  // Silica beads on inner wall
-  const beadCount = Math.floor(320 * qualityState.particleMul);
-  for (let i = 0; i < beadCount; i++) {
-    const d = 10 + rnd() * (RACE_DISTANCE - 20);
-    const f = frameAt(d / RACE_DISTANCE);
-    const angle = rnd() * Math.PI * 2;
-    const radius = GAME_CONFIG.columnRadius - 0.9 - rnd() * 0.8;
-    const p = f.p.clone()
-      .addScaledVector(f.side, Math.cos(angle) * radius)
-      .addScaledVector(f.trueUp, Math.sin(angle) * radius);
-    const s = 0.18 + rnd() * 0.55;
-    const bead = new THREE.Mesh(geo.sphereS, rnd() > 0.72 ? mats.silicaWarm : mats.silica);
-    bead.position.copy(p);
-    bead.scale.set(s, s * 0.78, s);
-    envGroup.add(bead);
+function clearGroup(group) {
+  while (group.children.length) {
+    const c = group.children[0];
+    group.remove(c);
+    disposeObject3D(c);
   }
 }
 
-// Flow channels (3 lanes)
-const flowGroup = new THREE.Group();
-scene.add(flowGroup);
+/** Sector visual density multipliers (organic along 1500 m). */
+function columnVisualProfile(distance) {
+  const t = distance / RACE_DISTANCE;
+  // Softer fog so packed silica walls stay readable; tints stay column-dark (not neon).
+  if (t < 0.2) return { silica: 0.75, flow: 0.7, mol: 0.45, fog: 0.0058, tint: 0x141a32 };
+  if (t < 0.4) return { silica: 1.15, flow: 0.85, mol: 0.7, fog: 0.0064, tint: 0x181c38 };
+  if (t < 0.6) return { silica: 1.0, flow: 1.0, mol: 1.2, fog: 0.0068, tint: 0x1a1740 };
+  if (t < 0.8) return { silica: 0.95, flow: 1.25, mol: 1.1, fog: 0.007, tint: 0x15243e };
+  if (t < 0.967) return { silica: 0.85, flow: 1.45, mol: 0.9, fog: 0.006, tint: 0x122848 };
+  return { silica: 0.7, flow: 1.1, mol: 0.55, fog: 0.0052, tint: 0x1a3058 };
+}
+
+const flowParticles = [];
+const ambientMolecules = [];
+
+/** Approved stationary-phase sprites — NearestFilter preserves 16-bit crispness. */
+function loadSilicaTexture(url) {
+  const tex = texLoader.load(url);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.magFilter = THREE.NearestFilter;
+  tex.minFilter = THREE.NearestFilter;
+  tex.generateMipmaps = false;
+  return tex;
+}
+
+const SILICA_TEX = {
+  particleSmall: loadSilicaTexture('./assets/environment/silica/silica-particle-small.png'),
+  particleMedium: loadSilicaTexture('./assets/environment/silica/silica-particle-medium.png'),
+  particleLarge: loadSilicaTexture('./assets/environment/silica/silica-particle-large.png'),
+  clusterSmall: loadSilicaTexture('./assets/environment/silica/silica-cluster-small.png'),
+  clusterMedium: loadSilicaTexture('./assets/environment/silica/silica-cluster-medium.png'),
+  clusterLarge: loadSilicaTexture('./assets/environment/silica/silica-cluster-large.png'),
+};
+
+const SILICA_MATS = {
+  particleSmall: new THREE.MeshBasicMaterial({
+    map: SILICA_TEX.particleSmall, transparent: true, depthWrite: false, side: THREE.DoubleSide,
+  }),
+  particleMedium: new THREE.MeshBasicMaterial({
+    map: SILICA_TEX.particleMedium, transparent: true, depthWrite: false, side: THREE.DoubleSide,
+  }),
+  particleLarge: new THREE.MeshBasicMaterial({
+    map: SILICA_TEX.particleLarge, transparent: true, depthWrite: false, side: THREE.DoubleSide,
+  }),
+  clusterSmall: new THREE.MeshBasicMaterial({
+    map: SILICA_TEX.clusterSmall, transparent: true, depthWrite: false, side: THREE.DoubleSide,
+  }),
+  clusterMedium: new THREE.MeshBasicMaterial({
+    map: SILICA_TEX.clusterMedium, transparent: true, depthWrite: false, side: THREE.DoubleSide,
+  }),
+  clusterLarge: new THREE.MeshBasicMaterial({
+    map: SILICA_TEX.clusterLarge, transparent: true, depthWrite: false, side: THREE.DoubleSide,
+  }),
+};
+
+/** Shared plane for wall-mounted packing (faces column axis, not camera). */
+const silicaPlaneGeo = new THREE.PlaneGeometry(1, 1);
+
+/** Runtime counts exposed for reports / debug. */
+const silicaStats = { particles: 0, clusters: 0, instances: 0, clusterLarge: 0 };
+
+/** Instanced wall packing — one mesh per approved silica material. */
+const silicaLayers = {
+  clusterLarge: { mat: SILICA_MATS.clusterLarge, mesh: null, count: 0, kind: 'cluster' },
+  clusterMedium: { mat: SILICA_MATS.clusterMedium, mesh: null, count: 0, kind: 'cluster' },
+  clusterSmall: { mat: SILICA_MATS.clusterSmall, mesh: null, count: 0, kind: 'cluster' },
+  particleLarge: { mat: SILICA_MATS.particleLarge, mesh: null, count: 0, kind: 'particle' },
+  particleMedium: { mat: SILICA_MATS.particleMedium, mesh: null, count: 0, kind: 'particle' },
+  particleSmall: { mat: SILICA_MATS.particleSmall, mesh: null, count: 0, kind: 'particle' },
+};
+const silicaDummy = new THREE.Object3D();
+
+/**
+ * Sample a wall-adjacent packed position (LEFT/RIGHT).
+ * Tight band near inner shell; wide corridor kept clear.
+ */
+function sampleWallPacked(sideSign, rMin, rMax, elev = 0) {
+  const r = rMin + rnd() * (rMax - rMin);
+  let lateral = sideSign * r * (0.92 + rnd() * 0.08);
+  let lift = elev * r + (rnd() - 0.5) * 0.28;
+  const hyp = Math.hypot(lateral, lift) || 1;
+  lateral = (lateral / hyp) * r;
+  lift = (lift / hyp) * r;
+  // Wide clear racing corridor (~70–80% of central gameplay band)
+  const corridorHalf = GAME_CONFIG.laneWidth * 2.85;
+  if (Math.abs(lateral) < corridorHalf) {
+    lateral = sideSign * (corridorHalf + 0.35 + rnd() * 0.45);
+    const hyp2 = Math.hypot(lateral, lift) || 1;
+    const rr = Math.max(r, corridorHalf + 0.85);
+    lateral = (lateral / hyp2) * rr;
+    lift = (lift / hyp2) * rr;
+  }
+  return { lateral, lift, r };
+}
+
+/**
+ * Place one inward-facing packing instance on a silica layer.
+ * Faces the column axis so it reads as bed material, not billboard debris.
+ */
+function placeSilicaInstance(layerKey, distance, lateral, lift, scale) {
+  const layer = silicaLayers[layerKey];
+  const cap = layer?.mesh?.userData?.capacity ?? 0;
+  if (!layer || !layer.mesh || layer.count >= cap) return false;
+  const f = frameAt(THREE.MathUtils.clamp(distance / RACE_DISTANCE, 0, 0.999));
+  const s = scale * (0.94 + rnd() * 0.1);
+  silicaDummy.position.copy(f.p)
+    .addScaledVector(f.side, lateral)
+    .addScaledVector(f.trueUp, lift);
+  silicaDummy.scale.set(s, s, 1);
+  silicaDummy.lookAt(f.p);
+  silicaDummy.rotateZ((rnd() - 0.5) * 0.5);
+  silicaDummy.updateMatrix();
+  layer.mesh.setMatrixAt(layer.count++, silicaDummy.matrix);
+  if (layer.kind === 'cluster') {
+    silicaStats.clusters += 1;
+    if (layerKey === 'clusterLarge') silicaStats.clusterLarge += 1;
+  } else {
+    silicaStats.particles += 1;
+  }
+  silicaStats.instances += 1;
+  return true;
+}
+
+/** Clusters: small/medium common; large very rare accent. */
+function pickClusterKey() {
+  const r = rnd();
+  if (r < 0.035) return 'clusterLarge';
+  if (r < 0.42) return 'clusterMedium';
+  return 'clusterSmall';
+}
+
+function pickParticleKey(preferSmall = false) {
+  const r = rnd();
+  if (preferSmall) {
+    if (r < 0.55) return 'particleSmall';
+    if (r < 0.88) return 'particleMedium';
+    return 'particleLarge';
+  }
+  if (r < 0.22) return 'particleLarge';
+  if (r < 0.7) return 'particleMedium';
+  return 'particleSmall';
+}
+
+function buildColumnStructure() {
+  const tubularSegments = Math.floor(280 * (qualityState.mode === 'low' ? 0.55 : 1));
+  const radial = qualityState.mode === 'low' ? 12 : 18;
+  const innerGeo = new THREE.TubeGeometry(curve, tubularSegments, GAME_CONFIG.columnRadius, radial, false);
+  envGroup.add(new THREE.Mesh(innerGeo, mats.columnWall));
+
+  const contourGeo = new THREE.TubeGeometry(
+    curve,
+    Math.floor(tubularSegments * 0.7),
+    GAME_CONFIG.columnRadius - 0.35,
+    Math.max(10, radial - 4),
+    false
+  );
+  envGroup.add(new THREE.Mesh(contourGeo, mats.columnInnerContour));
+
+  const outerGeo = new THREE.TubeGeometry(curve, Math.floor(tubularSegments * 0.55), GAME_CONFIG.columnRadius + 0.85, 10, false);
+  mats.columnOuter = new THREE.MeshBasicMaterial({
+    color: 0x1a1430,
+    transparent: true,
+    opacity: 0.35,
+    side: THREE.FrontSide,
+    depthWrite: false,
+  });
+  envGroup.add(new THREE.Mesh(outerGeo, mats.columnOuter));
+
+  // No road ribbon — column shell alone provides subtle floor curvature.
+}
+
+/**
+ * Stationary-phase packing — mid-density wall bed (3.2.2B).
+ * Midpoint between empty floating debris (~few hundred visible as space rocks)
+ * and cave flood (~44k). Modest scales + wide corridor; silica frames the tube.
+ *
+ * Midpoint budget ~4k–5k modest sprites (~9× below cave ~44k).
+ * Brief “180–240 total” cannot hit ~15–25% player-camera frame coverage
+ * over 1500 m; composition follows the visual hierarchy targets instead.
+ */
+function buildSilicaField() {
+  clearGroup(silicaGroup);
+  silicaStats.particles = 0;
+  silicaStats.clusters = 0;
+  silicaStats.instances = 0;
+  silicaStats.clusterLarge = 0;
+  Object.keys(silicaLayers).forEach((key) => {
+    silicaLayers[key].count = 0;
+    silicaLayers[key].mesh = null;
+  });
+
+  const mul = Math.min(1.1, qualityState.particleMul * (DEBUG_SILICA ? 1.15 : 1));
+  const debugScale = DEBUG_SILICA ? 1.05 : 1;
+  /** @type {{ key: string, distance: number, lateral: number, lift: number, scale: number }[]} */
+  const placements = [];
+  const queue = (key, distance, lateral, lift, scale) => {
+    placements.push({ key, distance, lateral, lift, scale });
+  };
+
+  // Midpoint scales: readable wall grain without cave boulders
+  const clusterScale = (key) => {
+    if (key === 'clusterLarge') return 1.7 + rnd() * 0.22;
+    if (key === 'clusterMedium') return 1.35 + rnd() * 0.25;
+    return 1.05 + rnd() * 0.22;
+  };
+  const particleScale = (size = 'medium') => {
+    if (size === 'small') return 0.5 + rnd() * 0.16;
+    if (size === 'large') return 0.85 + rnd() * 0.18;
+    return 0.65 + rnd() * 0.18;
+  };
+
+  // Prefer mid-wall; slight floor bias avoided so corners stay clear in player cam
+  const midWallElev = () => (rnd() > 0.5 ? 1 : -1) * (0.22 + rnd() * 0.58);
+
+  // Consistent L/R wall grain along full spline
+  const patchStep = Math.max(1.55, 1.8 / Math.max(0.55, mul));
+  for (let d0 = 9; d0 < RACE_DISTANCE - 12; d0 += patchStep) {
+    const wave = 0.5 + 0.5 * Math.sin(d0 * 0.05) * Math.cos(d0 * 0.018);
+
+    for (const sideSign of [-1, 1]) {
+      if (rnd() > 0.94 + 0.04 * wave) continue;
+
+      const elev = midWallElev();
+      const dd = d0 + (rnd() - 0.5) * patchStep * 0.85;
+
+      if (rnd() < 0.34) {
+        const p = sampleWallPacked(sideSign, 9.5, 10.08, elev);
+        const key = pickClusterKey();
+        queue(key, dd, p.lateral, p.lift, clusterScale(key) * debugScale);
+      } else {
+        const p = sampleWallPacked(sideSign, 9.5, 10.08, elev);
+        const pk = pickParticleKey();
+        const sz = pk === 'particleSmall' ? 'small' : pk === 'particleLarge' ? 'large' : 'medium';
+        queue(pk, dd, p.lateral, p.lift, particleScale(sz) * debugScale);
+      }
+
+      if (rnd() < 0.78) {
+        const p2 = sampleWallPacked(sideSign, 9.45, 10.05, elev + (rnd() - 0.5) * 0.12);
+        if (rnd() < 0.3) {
+          const key = rnd() < 0.75 ? 'clusterSmall' : 'clusterMedium';
+          queue(key, dd + (rnd() - 0.5) * 1.0, p2.lateral, p2.lift, clusterScale(key) * 0.92 * debugScale);
+        } else {
+          queue(
+            pickParticleKey(true),
+            dd + (rnd() - 0.5) * 1.15,
+            p2.lateral, p2.lift,
+            particleScale('small') * debugScale
+          );
+        }
+      }
+
+      // Extra particle to knit packed-bed look without adding large clusters
+      if (rnd() < 0.4 + 0.15 * wave) {
+        const p3 = sampleWallPacked(sideSign, 9.55, 10.08, elev + (rnd() - 0.5) * 0.14);
+        queue(
+          pickParticleKey(true),
+          dd + (rnd() - 0.5) * 1.4,
+          p3.lateral, p3.lift,
+          particleScale('small') * debugScale
+        );
+      }
+    }
+  }
+
+  // FAR small particles — depth layer
+  const farStep = Math.max(3.4, 3.9 / Math.max(0.55, mul));
+  for (let d0 = 12; d0 < RACE_DISTANCE - 18; d0 += farStep) {
+    for (const sideSign of [-1, 1]) {
+      if (rnd() > 0.85) continue;
+      const p = sampleWallPacked(sideSign, 9.6, 10.1, midWallElev());
+      queue(
+        pickParticleKey(true),
+        d0 + rnd() * farStep * 0.55,
+        p.lateral, p.lift,
+        particleScale('small') * debugScale
+      );
+    }
+  }
+
+  // Sparse shoulder accents — frame column, do not seal a cave
+  const stitchStep = Math.max(12, 14 / Math.max(0.55, mul));
+  for (let d0 = 14; d0 < RACE_DISTANCE - 22; d0 += stitchStep) {
+    if (rnd() > 0.6) continue;
+    const upSign = rnd() > 0.5 ? 1 : -1;
+    const sideSign = rnd() > 0.5 ? 1 : -1;
+    const r = 9.55 + rnd() * 0.5;
+    let lateral = sideSign * (GAME_CONFIG.laneWidth * 2.9 + rnd() * 2.4);
+    let lift = upSign * r * (0.48 + rnd() * 0.22);
+    const hyp = Math.hypot(lateral, lift) || 1;
+    lateral = (lateral / hyp) * r;
+    lift = (lift / hyp) * r;
+    if (Math.abs(lateral) < GAME_CONFIG.laneWidth * 2.6) {
+      lateral = sideSign * (GAME_CONFIG.laneWidth * 2.75 + rnd() * 0.35);
+    }
+    queue(pickParticleKey(true), d0 + rnd() * 4, lateral, lift, particleScale('small') * debugScale);
+  }
+
+  // Cap far below cave (~44k) — about 8–10× lower
+  const softMax = Math.floor(5200 * Math.min(1.05, mul));
+  if (placements.length > softMax) {
+    const keep = [];
+    const stride = placements.length / softMax;
+    for (let i = 0; i < softMax; i++) {
+      keep.push(placements[Math.min(placements.length - 1, Math.floor(i * stride))]);
+    }
+    placements.length = 0;
+    keep.forEach((p) => placements.push(p));
+  }
+
+  const counts = {
+    clusterLarge: 0, clusterMedium: 0, clusterSmall: 0,
+    particleLarge: 0, particleMedium: 0, particleSmall: 0,
+  };
+  placements.forEach((p) => { counts[p.key] += 1; });
+  Object.keys(silicaLayers).forEach((key) => {
+    const n = Math.max(1, counts[key] || 0);
+    const mesh = new THREE.InstancedMesh(silicaPlaneGeo, silicaLayers[key].mat, n);
+    mesh.instanceMatrix.setUsage(THREE.StaticDrawUsage);
+    mesh.frustumCulled = false;
+    mesh.renderOrder = 0;
+    mesh.userData.capacity = n;
+    silicaLayers[key].mesh = mesh;
+    silicaLayers[key].count = 0;
+    silicaGroup.add(mesh);
+  });
+  placements.forEach((p) => {
+    placeSilicaInstance(p.key, p.distance, p.lateral, p.lift, p.scale);
+  });
+  Object.keys(silicaLayers).forEach((key) => {
+    const layer = silicaLayers[key];
+    if (!layer.mesh) return;
+    layer.mesh.count = layer.count;
+    layer.mesh.instanceMatrix.needsUpdate = true;
+  });
+
+  if (DEBUG_SILICA) {
+    flowGroup.visible = false;
+    infraGroup.visible = false;
+    mats.columnWall.opacity = 0.35;
+    if (mats.columnInnerContour) mats.columnInnerContour.opacity = 0.45;
+  } else {
+    flowGroup.visible = true;
+    infraGroup.visible = true;
+    mats.columnWall.opacity = 0.58;
+    if (mats.columnInnerContour) mats.columnInnerContour.opacity = 0.26;
+  }
+}
+
+function buildInfrastructure() {
+  const count = Math.floor(48 / qualityState.ringStep);
+  const dummy = new THREE.Object3D();
+  const struts = new THREE.InstancedMesh(geo.strut, mats.infra, count * 2);
+  const panels = new THREE.InstancedMesh(geo.panel, mats.infraAccent, count);
+  let si = 0;
+  let pi = 0;
+  for (let i = 0; i < count; i++) {
+    const d = (i / Math.max(1, count - 1)) * RACE_DISTANCE;
+    const f = frameAt(d / RACE_DISTANCE);
+    for (const sideSign of [-1, 1]) {
+      dummy.position.copy(f.p)
+        .addScaledVector(f.side, sideSign * (GAME_CONFIG.columnRadius - 1.15))
+        .addScaledVector(f.trueUp, -0.4 + (i % 3) * 0.35);
+      dummy.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), f.tangent);
+      dummy.scale.set(1, 1, 1);
+      dummy.updateMatrix();
+      struts.setMatrixAt(si++, dummy.matrix);
+    }
+    if (i % 2 === 0) {
+      const sideSign = (i % 4) < 2 ? -1 : 1;
+      dummy.position.copy(f.p)
+        .addScaledVector(f.side, sideSign * (GAME_CONFIG.columnRadius - 0.6))
+        .addScaledVector(f.trueUp, 1.8);
+      dummy.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), f.tangent);
+      dummy.scale.set(1, 1, 1);
+      dummy.updateMatrix();
+      panels.setMatrixAt(pi++, dummy.matrix);
+    }
+  }
+  struts.count = si;
+  panels.count = pi;
+  struts.instanceMatrix.needsUpdate = true;
+  panels.instanceMatrix.needsUpdate = true;
+  infraGroup.add(struts, panels);
+
+  for (let i = 0; i < 18; i++) {
+    const d = 40 + i * (RACE_DISTANCE / 18);
+    const f = frameAt(d / RACE_DISTANCE);
+    const port = new THREE.Mesh(geo.pixel, mats.detectorAccent);
+    port.scale.set(0.35, 0.55, 0.9);
+    port.position.copy(f.p)
+      .addScaledVector(f.trueUp, GAME_CONFIG.columnRadius - 1.4)
+      .addScaledVector(f.side, (i % 2 ? -1 : 1) * 1.2);
+    infraGroup.add(port);
+  }
+}
+
+function buildEnvironment() {
+  clearGroup(envGroup);
+  clearGroup(silicaGroup);
+  clearGroup(infraGroup);
+  seed = 1337;
+  buildColumnStructure();
+  buildSilicaField();
+  if (!DEBUG_SILICA) buildInfrastructure();
+}
 
 function buildFlowChannels() {
-  while (flowGroup.children.length) flowGroup.remove(flowGroup.children[0]);
-
-  for (let li = 0; li < LANES.length; li++) {
-    const lane = LANES[li];
-    const pts = [];
-    const steps = 160;
-    for (let i = 0; i <= steps; i++) {
-      pts.push(worldAt((i / steps) * RACE_DISTANCE, lane, 0.12));
-    }
-    const c = new THREE.CatmullRomCurve3(pts, false, 'catmullrom', 0.2);
-    const tube = new THREE.Mesh(new THREE.TubeGeometry(c, 280, 0.07, 5, false), mats.flow[li]);
-    flowGroup.add(tube);
-    const glow = new THREE.Mesh(new THREE.TubeGeometry(c, 180, 0.18, 5, false), mats.flowGlow);
-    flowGroup.add(glow);
+  clearGroup(flowGroup);
+  // No solid road ribbons. Sparse scientific lane ticks + soft solvent mist only.
+  const tickCount = Math.floor(90 * qualityState.particleMul);
+  const ticks = new THREE.InstancedMesh(geo.pixel, mats.flowSoft, tickCount);
+  ticks.instanceMatrix.setUsage(THREE.StaticDrawUsage);
+  const dummy = new THREE.Object3D();
+  let ti = 0;
+  for (let i = 0; i < tickCount; i++) {
+    const lane = LANES[i % 3];
+    const d = (i / tickCount) * RACE_DISTANCE;
+    const f = frameAt(THREE.MathUtils.clamp(d / RACE_DISTANCE, 0, 0.999));
+    worldAt(d, lane, 0.05 + (i % 5) * 0.04, dummy.position);
+    dummy.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), f.tangent);
+    const s = 0.08 + (i % 3) * 0.03;
+    dummy.scale.set(s * 0.55, s * 0.55, s * 2.4);
+    dummy.updateMatrix();
+    ticks.setMatrixAt(ti++, dummy.matrix);
   }
+  ticks.count = ti;
+  ticks.instanceMatrix.needsUpdate = true;
+  flowGroup.add(ticks);
+
+  // One very soft central solvent sheath (reads as mobile phase volume, not a lane)
+  const pts = [];
+  const steps = 100;
+  for (let i = 0; i <= steps; i++) pts.push(worldAt((i / steps) * RACE_DISTANCE, 0, 0.35));
+  const c = new THREE.CatmullRomCurve3(pts, false, 'catmullrom', 0.2);
+  flowGroup.add(new THREE.Mesh(
+    new THREE.TubeGeometry(c, 140, 1.15, 6, false),
+    new THREE.MeshBasicMaterial({
+      color: 0x2ab8e0,
+      transparent: true,
+      opacity: 0.028,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+    })
+  ));
 }
 
-// Flow particles + molecules
-const flowParticles = [];
 function spawnFlowParticles() {
   flowParticles.forEach((fp) => flowGroup.remove(fp.mesh));
   flowParticles.length = 0;
-  const count = Math.floor(110 * qualityState.particleMul);
+  const count = Math.floor(180 * qualityState.particleMul);
   for (let i = 0; i < count; i++) {
-    const lane = LANES[i % 3];
-    const isMol = i % 6 === 0;
-    const mesh = new THREE.Mesh(
-      geo.sphereS,
-      isMol ? mats.molecule : new THREE.MeshBasicMaterial({ color: 0x62edff })
-    );
-    const s = isMol ? 0.14 + rnd() * 0.1 : 0.05 + rnd() * 0.07;
-    mesh.scale.setScalar(s);
+    // Bias toward the three gameplay lanes without drawing road lines
+    const laneBias = LANES[i % 3] + (rnd() - 0.5) * 0.55;
+    const mesh = new THREE.Mesh(geo.pixel, mats.flowPixel.clone());
+    mesh.material.opacity = 0.3 + rnd() * 0.55;
+    const s = 0.035 + rnd() * 0.1;
+    mesh.scale.set(s, s, s * (1.8 + rnd() * 3.2));
     flowGroup.add(mesh);
     flowParticles.push({
       mesh,
-      lane,
+      lane: laneBias,
       offset: rnd() * RACE_DISTANCE,
-      speed: 12 + rnd() * 18,
+      speed: 16 + rnd() * 26,
       wobble: rnd() * Math.PI * 2,
+      liftBase: 0.02 + rnd() * 0.85,
     });
   }
 }
 
-// Detector UV/Vis
+function spawnAmbientMolecules() {
+  ambientMolecules.forEach((m) => scene.remove(m.mesh));
+  ambientMolecules.length = 0;
+  const count = Math.floor(36 * qualityState.particleMul);
+  for (let i = 0; i < count; i++) {
+    const mat = mats.moleculeAmb[i % mats.moleculeAmb.length];
+    const mesh = new THREE.Mesh(i % 3 === 0 ? geo.crystal : geo.pixel, mat);
+    mesh.scale.setScalar(0.12 + rnd() * 0.22);
+    scene.add(mesh);
+    ambientMolecules.push({
+      mesh,
+      lane: (rnd() - 0.5) * 2.4,
+      offset: rnd() * RACE_DISTANCE,
+      speed: 6 + rnd() * 14,
+      lift: 0.4 + rnd() * 2.2,
+      spin: 0.5 + rnd() * 2,
+    });
+  }
+}
+
+// Detector UV/Vis — scientific housing + billboard face
 const detectorTex = texLoader.load('./assets/detector-uv-vis.png');
 detectorTex.colorSpace = THREE.SRGBColorSpace;
-const detector = new THREE.Sprite(new THREE.SpriteMaterial({
+const detectorFace = new THREE.Sprite(new THREE.SpriteMaterial({
   map: detectorTex, transparent: true, depthWrite: false,
 }));
-detector.scale.set(14, 9.2, 1);
-scene.add(detector);
+detectorFace.scale.set(10, 6.6, 1);
+detectorFace.renderOrder = 3;
 
-const detectorGlow = new THREE.PointLight(0x5de5ff, 1.4, 55, 2);
-scene.add(detectorGlow);
+const detectorHousing = new THREE.Group();
+{
+  const body = new THREE.Mesh(geo.pixel, mats.detectorBody);
+  body.scale.set(8.5, 6.2, 4.5);
+  const rim = new THREE.Mesh(geo.pixel, mats.detectorAccent);
+  rim.scale.set(9.2, 0.35, 5.0);
+  rim.position.y = 3.3;
+  const aperture = new THREE.Mesh(geo.sphereS, mats.detectorUv);
+  aperture.scale.set(2.4, 2.4, 1.2);
+  aperture.position.z = 2.2;
+  const sensorL = new THREE.Mesh(geo.pixel, mats.detectorAccent);
+  sensorL.scale.set(0.4, 0.8, 0.4);
+  sensorL.position.set(-3.2, 1.2, 2.4);
+  const sensorR = sensorL.clone();
+  sensorR.position.x = 3.2;
+  detectorHousing.add(body, rim, aperture, sensorL, sensorR);
+}
+
+detectorGroup.add(detectorHousing, detectorFace);
+const detectorGlow = new THREE.PointLight(0xb48cff, 1.2, 60, 2);
+detectorGroup.add(detectorGlow);
+const detector = detectorFace;
 
 function placeDetector() {
-  const f = frameAt(0.995);
-  detector.position.copy(worldAt(RACE_DISTANCE - 8, 0, 2.8));
-  detectorGlow.position.copy(detector.position);
+  const f = frameAt(0.994);
+  const p = worldAt(RACE_DISTANCE - 6, 0, 1.6);
+  detectorGroup.position.copy(p);
+  detectorGroup.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), f.tangent.clone().negate());
+  detectorFace.position.set(0, 1.2, 2.6);
+  detectorHousing.position.set(0, 0.4, 0);
+  detectorGlow.position.set(0, 1.5, 3);
+}
+
+function updateColumnAtmosphere(dt, boosting) {
+  const profile = columnVisualProfile(state.mode === 'race' || state.mode === 'countdown' ? state.distance : 20);
+  const dist = state.mode === 'race' || state.mode === 'countdown' ? state.distance : 20;
+  const sector = getSector(dist);
+  const turbulent = sector?.name === 'TURBULÊNCIA';
+  const turbPulse = turbulent ? 1 + Math.sin(state.elapsed * 5.5) * 0.12 : 1;
+
+  scene.fog.density = profile.fog * (boosting ? 0.82 : 1) * (turbulent ? 1.08 : 1);
+  scene.background.lerp(new THREE.Color(profile.tint), 0.04);
+  columnFill.intensity = 0.28 + profile.flow * 0.12 + (boosting ? 0.18 : 0) + (turbulent ? 0.1 : 0);
+
+  const speedRatio = Math.max(0.35, state.speed / GAME_CONFIG.baseSpeed || 1);
+  const flowMul = profile.flow * (boosting ? 1.85 : 1) * speedRatio * turbPulse;
+  flowParticles.forEach((fp) => {
+    fp.offset -= fp.speed * dt * flowMul;
+    const windowFar = 280 + profile.flow * 80;
+    if (fp.offset < dist - 14) fp.offset = dist + 40 + rnd() * windowFar;
+    if (fp.offset > dist + 520) fp.offset = dist + 30 + rnd() * 60;
+    const sideWobble = turbulent ? Math.sin(fp.offset * 0.14 + fp.wobble + state.elapsed * 3) * 0.22 : 0;
+    const lift = fp.liftBase + Math.sin(fp.offset * 0.09 + fp.wobble) * (0.16 + (turbulent ? 0.12 : 0));
+    worldAt(fp.offset, fp.lane + sideWobble, lift, fp.mesh.position);
+    const f = frameAt(THREE.MathUtils.clamp(fp.offset / RACE_DISTANCE, 0, 0.999));
+    fp.mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), f.tangent);
+    if (fp.mesh.material) {
+      const stretch = boosting ? 1.35 : 1;
+      fp.mesh.scale.z = Math.max(fp.mesh.scale.x * 1.8, fp.mesh.scale.x * (2.2 + speedRatio) * stretch);
+      fp.mesh.material.opacity = Math.min(0.95, (0.32 + profile.flow * 0.28) * (boosting ? 1.2 : 1));
+    }
+  });
+
+  ambientMolecules.forEach((m) => {
+    m.offset -= m.speed * dt * (0.7 + profile.mol * 0.5) * (boosting ? 1.35 : 1) * turbPulse;
+    if (m.offset < dist - 20) m.offset = dist + 80 + rnd() * 420;
+    const laneJitter = turbulent ? Math.sin(state.elapsed * 2.2 + m.spin) * 0.15 : 0;
+    worldAt(m.offset, m.lane + laneJitter, m.lift, m.mesh.position);
+    m.mesh.rotation.x += dt * m.spin;
+    m.mesh.rotation.y += dt * m.spin * 0.7;
+    const close = Math.abs(m.offset - dist) < 8 && Math.abs(m.lane - (state.laneVisual || 0)) < 0.55;
+    m.mesh.visible = !close;
+  });
+
+  // Detector UV/Vis approach: 1450 → appear, 1475 → clear, 1490 → intense, 1500 → arrival
+  const remaining = RACE_DISTANCE - dist;
+  const approach = THREE.MathUtils.clamp(1 - remaining / 50, 0, 1);
+  const early = THREE.MathUtils.clamp(1 - remaining / 120, 0, 1);
+  const intense = THREE.MathUtils.clamp(1 - remaining / 10, 0, 1);
+  detectorGroup.visible = remaining < 160;
+  detectorFace.scale.set(10 + approach * 8 + intense * 3, 6.6 + approach * 5.2 + intense * 2, 1);
+  detectorHousing.scale.setScalar(0.85 + early * 0.55 + approach * 0.2);
+  detectorGlow.intensity = 0.6 + early * 1.4 + approach * 2.2 + intense * 1.5;
+  mats.detectorUv.opacity = 0.35 + approach * 0.5 + intense * 0.15;
+  if (intense > 0.2) {
+    accent.color.lerp(new THREE.Color(0xb48cff), 0.08);
+  } else {
+    accent.color.lerp(new THREE.Color(0xf28c28), 0.06);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -857,13 +1358,14 @@ for (let i = 0; i < 24; i++) {
   });
 }
 
-// Speed streaks (motion feel)
+// Speed streaks (pixelated solvent streaks)
 const streaks = [];
 for (let i = 0; i < 18; i++) {
   const m = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.02, 0.02, 1.2, 4),
-    new THREE.MeshBasicMaterial({ color: 0x5de5ff, transparent: true, opacity: 0.35 })
+    geo.pixel,
+    new THREE.MeshBasicMaterial({ color: 0x9adfff, transparent: true, opacity: 0.4 })
   );
+  m.scale.set(0.05, 0.05, 1.4);
   m.visible = false;
   scene.add(m);
   streaks.push({ mesh: m, life: 0, lane: 0, d: 0 });
@@ -1156,43 +1658,32 @@ function updateRace(dt) {
     }
   });
 
-  // Flow particles
-  flowParticles.forEach((fp) => {
-    fp.offset -= fp.speed * dt * (boosting ? 1.5 : 1);
-    if (fp.offset < state.distance - 12) fp.offset = state.distance + 220 + rnd() * 400;
-    if (fp.offset > state.distance + 500) fp.offset = state.distance + 40 + rnd() * 80;
-    const lift = 0.2 + Math.sin(fp.offset * 0.08 + fp.wobble) * 0.18;
-    worldAt(fp.offset, fp.lane, lift, fp.mesh.position);
-  });
-
-  // Streaks during boost
-  streaks.forEach((s, i) => {
-    if (boosting && s.life <= 0 && rnd() > 0.7) {
-      s.life = 0.25 + rnd() * 0.2;
-      s.lane = state.laneVisual + (rnd() - 0.5) * 1.6;
-      s.d = state.distance + 2 + rnd() * 10;
+  // Streaks during boost — pixel streaks, not photographic blur
+  streaks.forEach((s) => {
+    if (boosting && s.life <= 0 && rnd() > 0.65) {
+      s.life = 0.22 + rnd() * 0.2;
+      s.lane = state.laneVisual + (rnd() - 0.5) * 1.8;
+      s.d = state.distance + 2 + rnd() * 12;
       s.mesh.visible = true;
     }
     if (s.life > 0) {
       s.life -= dt;
-      s.d += state.speed * dt * 0.4;
-      worldAt(s.d, s.lane, 0.5 + rnd() * 0.8, s.mesh.position);
+      s.d += state.speed * dt * 0.45;
+      worldAt(s.d, s.lane, 0.4 + rnd() * 1.1, s.mesh.position);
       const f = frameAt(THREE.MathUtils.clamp(s.d / RACE_DISTANCE, 0, 0.999));
-      s.mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), f.tangent);
-      s.mesh.material.opacity = Math.max(0, s.life * 1.4);
+      s.mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), f.tangent);
+      s.mesh.material.opacity = Math.max(0, s.life * 1.5);
       if (s.life <= 0) s.mesh.visible = false;
     }
   });
 
-  // Accent light near player
+  // Lights follow player inside the column
   accent.position.copy(vita.position);
   accent.position.y += 2;
+  columnFill.position.copy(vita.position);
+  columnFill.position.addScaledVector(frameAt(THREE.MathUtils.clamp(state.distance / RACE_DISTANCE, 0, 0.998)).trueUp, 2.5);
 
-  // Sector fog / tint
-  scene.fog.density = sector.fog * (boosting ? 0.85 : 1);
-  scene.background.lerp(new THREE.Color(0x071326).lerp(new THREE.Color(sector.tint), 0.15), 0.05);
-
-  // Camera follow spline
+  // Camera follow spline (unchanged behavior)
   const t = THREE.MathUtils.clamp(state.distance / RACE_DISTANCE, 0, 0.998);
   const f = frameAt(t);
   const camPos = worldAt(state.distance - GAME_CONFIG.camera.back, state.laneVisual * 0.35, GAME_CONFIG.camera.height, _tmp);
@@ -1207,10 +1698,7 @@ function updateRace(dt) {
   camera.updateProjectionMatrix();
 
   placeDetector();
-  // Scale detector as approach
-  const approach = THREE.MathUtils.clamp(1 - (RACE_DISTANCE - state.distance) / 120, 0, 1);
-  detector.scale.set(14 + approach * 6, 9.2 + approach * 4, 1);
-  detectorGlow.intensity = 1.2 + approach * 2.2;
+  updateColumnAtmosphere(dt, boosting);
 
   updateHud();
 
@@ -1244,16 +1732,12 @@ function animate() {
   if (state.mode === 'countdown') updateCountdown(dt);
   else if (state.mode === 'race') updateRace(dt);
   else if (state.mode === 'menu') {
-    // Idle camera drift near start
+    // Idle camera drift near start — inside the column
     const idleT = (performance.now() * 0.00008) % 0.08;
     const f = frameAt(idleT);
     camera.position.lerp(worldAt(idleT * RACE_DISTANCE - 6, 0, 4.2, _tmp), 0.04);
     camera.up.lerp(f.trueUp, 0.05);
     camera.lookAt(worldAt(idleT * RACE_DISTANCE + 18, 0, 1.5, _tmp2));
-    flowParticles.forEach((fp) => {
-      fp.offset = (fp.offset + dt * fp.speed * 0.35) % RACE_DISTANCE;
-      worldAt(fp.offset, fp.lane, 0.25, fp.mesh.position);
-    });
     worldAt(8, 0, 1.1, vita.position);
     vitaAnimTime += dt;
     if (vitaAnimTime > 0.1) {
@@ -1261,7 +1745,6 @@ function animate() {
       vitaFrame = (vitaFrame + 1) % 8;
       setVitaFrame(vitaFrame);
     }
-    // Keep sprite rivals visible on menu (same pipeline as Vita)
     rivals.forEach((r, i) => {
       if (r.actor) {
         r.d = 16 + i * 6;
@@ -1272,12 +1755,15 @@ function animate() {
       }
     });
     placeDetector();
+    updateColumnAtmosphere(dt, false);
   }
   if (state.mode === 'countdown' || state.mode === 'results') {
     rivals.forEach((r) => {
       if (r.actor) r.actor.updateVisual(r, dt, false);
       else worldAt(r.d, r.laneF, 0.95, r.g.position);
     });
+    placeDetector();
+    updateColumnAtmosphere(dt, false);
   }
   renderer.render(scene, camera);
 }
@@ -1355,6 +1841,7 @@ $('settingFewerParticles').onchange = (e) => {
   Storage.set('chromaracers_fewer_particles', e.target.checked);
   applyQuality(qualityState.mode, lastFps);
   spawnFlowParticles();
+  spawnAmbientMolecules();
 };
 
 $('btnSaveScore').onclick = () => {
@@ -1386,6 +1873,7 @@ applyQuality(qualityState.mode, 60);
 buildEnvironment();
 buildFlowChannels();
 spawnFlowParticles();
+spawnAmbientMolecules();
 placeDetector();
 setVitaFrame(0);
 worldAt(8, 0, 1.1, vita.position);
@@ -1404,6 +1892,19 @@ state.mode = 'menu';
 animate();
 
 // Expose config for debugging / easy distance change verification
+function snapCameraToPlayer() {
+  const t = THREE.MathUtils.clamp(state.distance / RACE_DISTANCE, 0, 0.998);
+  const f = frameAt(t);
+  camera.position.copy(worldAt(state.distance - GAME_CONFIG.camera.back, state.laneVisual * 0.35, GAME_CONFIG.camera.height, _tmp));
+  const look = worldAt(state.distance + GAME_CONFIG.camera.lookAhead, state.laneVisual * 0.2, 1.4, _tmp2);
+  look.addScaledVector(f.trueUp, 0.4);
+  camera.up.copy(f.trueUp);
+  camera.lookAt(look);
+  camera.fov = GAME_CONFIG.camera.baseFov;
+  camera.updateProjectionMatrix();
+}
+
 window.CHROMARACERS = {
   GAME_CONFIG, RACE_DISTANCE, SECTORS, state, Storage, rivals, vita, spriteActors,
+  DEBUG_SILICA, silicaStats, silicaGroup, snapCameraToPlayer,
 };
