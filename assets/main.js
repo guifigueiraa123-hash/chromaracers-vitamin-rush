@@ -677,9 +677,9 @@ function buildSilicaField() {
   const particleScale = () => 1.15 + rnd() * 0.55;
 
   // Full-track coverage: denser visual via overlap/scale, not front-loaded counts.
-  // Target ~24–30k instances at high quality (InstancedMesh batches).
-  const step = Math.max(1.9, 2.25 / Math.max(0.55, mul));
-  const elevSlots = 8;
+  // Target ~36–42k instances at high quality (InstancedMesh batches).
+  const step = Math.max(1.65, 1.95 / Math.max(0.55, mul));
+  const elevSlots = 9;
   for (let d0 = 2; d0 < RACE_DISTANCE - 4; d0 += step) {
     const wave = 0.5 + 0.5 * Math.sin(d0 * 0.07) * Math.cos(d0 * 0.026);
     const density = 0.9 + 0.1 * wave;
@@ -721,9 +721,9 @@ function buildSilicaField() {
       }
 
       // Local dense patches along wall
-      if (rnd() < 0.45 * density) {
+      if (rnd() < 0.52 * density) {
         const elev0 = (rnd() - 0.5) * 1.1;
-        for (let k = 0; k < 2; k++) {
+        for (let k = 0; k < 3; k++) {
           const p = sampleWallPacked(sideSign, 9.15, 10.08, elev0 + (rnd() - 0.5) * 0.28);
           if (rnd() < 0.65) {
             const key = pickClusterKey();
@@ -754,11 +754,11 @@ function buildSilicaField() {
   }
 
   // Ceiling/floor shoulders near L/R walls — enclose the tube without closing corridor
-  const stitchStep = Math.max(2.1, 2.5 / Math.max(0.55, mul));
+  const stitchStep = Math.max(1.85, 2.2 / Math.max(0.55, mul));
   for (let d0 = 2; d0 < RACE_DISTANCE - 4; d0 += stitchStep) {
     for (const upSign of [-1, 1]) {
       for (let n = 0; n < 3; n++) {
-        if (rnd() > 0.84) continue;
+        if (rnd() > 0.86) continue;
         const r = 9.35 + rnd() * 0.7;
         // Bias toward side walls; allow higher |lift| so packed bed wraps toward ceiling/floor
         let lateral = (rnd() > 0.5 ? 1 : -1) * (GAME_CONFIG.laneWidth * 2.0 + rnd() * 4.2);
