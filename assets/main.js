@@ -446,16 +446,16 @@ const texLoader = new THREE.TextureLoader();
 
 // Column shell — light cylindrical container (must stay visible; must not become a cave)
 mats.columnWall = new THREE.MeshBasicMaterial({
-  color: 0x3a3358,
+  color: 0x45406a,
   transparent: true,
-  opacity: 0.52,
+  opacity: 0.58,
   side: THREE.BackSide,
   depthWrite: false,
 });
 mats.columnInnerContour = new THREE.MeshBasicMaterial({
-  color: 0x7a68a8,
+  color: 0x8a78b8,
   transparent: true,
-  opacity: 0.22,
+  opacity: 0.26,
   side: THREE.BackSide,
   depthWrite: false,
 });
@@ -661,7 +661,7 @@ function buildColumnStructure() {
  * Midpoint between empty floating debris (~few hundred visible as space rocks)
  * and cave flood (~44k). Modest scales + wide corridor; silica frames the tube.
  *
- * Midpoint budget ~2800–3400 modest sprites (~13× below cave ~44k).
+ * Midpoint budget ~2500–3000 modest sprites (~15× below cave ~44k).
  * Brief “180–240 total” cannot hit ~15–25% player-camera frame coverage
  * over 1500 m; composition follows the visual hierarchy targets instead.
  */
@@ -684,51 +684,50 @@ function buildSilicaField() {
     placements.push({ key, distance, lateral, lift, scale });
   };
 
-  // Scales stay modest when they become near-camera — large ≈ 1.3× medium
+  // Near-safe scales — when beside the camera they must stay wall accents, not corner boulders
   const clusterScale = (key) => {
-    if (key === 'clusterLarge') return 1.55 + rnd() * 0.2;
-    if (key === 'clusterMedium') return 1.2 + rnd() * 0.22;
-    return 0.95 + rnd() * 0.2;
+    if (key === 'clusterLarge') return 1.35 + rnd() * 0.18;
+    if (key === 'clusterMedium') return 1.05 + rnd() * 0.18;
+    return 0.85 + rnd() * 0.18;
   };
   const particleScale = (size = 'medium') => {
-    if (size === 'small') return 0.48 + rnd() * 0.16;
-    if (size === 'large') return 0.78 + rnd() * 0.18;
-    return 0.6 + rnd() * 0.18;
+    if (size === 'small') return 0.42 + rnd() * 0.14;
+    if (size === 'large') return 0.7 + rnd() * 0.16;
+    return 0.55 + rnd() * 0.16;
   };
 
-  // Even wall packing with mild density waves (avoid empty sectors / cave sectors)
-  const patchStep = Math.max(2.35, 2.7 / Math.max(0.55, mul));
-  for (let d0 = 8; d0 < RACE_DISTANCE - 14; d0 += patchStep) {
+  // Mid-wall elev only (avoid floor band → giant bottom-corner sprites in player cam)
+  const midWallElev = () => (rnd() > 0.5 ? 1 : -1) * (0.28 + rnd() * 0.5);
+
+  // Even wall packing with mild density waves
+  const patchStep = Math.max(2.2, 2.55 / Math.max(0.55, mul));
+  for (let d0 = 10; d0 < RACE_DISTANCE - 14; d0 += patchStep) {
     const wave = 0.5 + 0.5 * Math.sin(d0 * 0.055) * Math.cos(d0 * 0.02);
-    if (rnd() > 0.88 + 0.08 * wave) continue;
+    if (rnd() > 0.9 + 0.06 * wave) continue;
 
     for (const sideSign of [-1, 1]) {
-      if (rnd() > 0.9 + 0.05 * wave) continue;
+      if (rnd() > 0.92 + 0.04 * wave) continue;
 
-      const elev = (rnd() - 0.5) * 0.95;
+      const elev = midWallElev();
       const dd = d0 + (rnd() - 0.5) * patchStep * 0.8;
 
       // Particle-heavy mix; clusters as packed accents
-      if (rnd() < 0.32) {
-        const p = sampleWallPacked(sideSign, 9.5, 10.05, elev);
+      if (rnd() < 0.3) {
+        const p = sampleWallPacked(sideSign, 9.55, 10.08, elev);
         const key = pickClusterKey();
         queue(key, dd, p.lateral, p.lift, clusterScale(key) * debugScale);
       } else {
-        const p = sampleWallPacked(sideSign, 9.5, 10.05, elev);
+        const p = sampleWallPacked(sideSign, 9.55, 10.08, elev);
         const pk = pickParticleKey();
         const sz = pk === 'particleSmall' ? 'small' : pk === 'particleLarge' ? 'large' : 'medium';
         queue(pk, dd, p.lateral, p.lift, particleScale(sz) * debugScale);
       }
 
-      if (rnd() < 0.7) {
-        const p2 = sampleWallPacked(sideSign, 9.45, 10.0, elev + (rnd() - 0.5) * 0.12);
-        if (rnd() < 0.28) {
-          queue(
-            rnd() < 0.75 ? 'clusterSmall' : 'clusterMedium',
-            dd + (rnd() - 0.5) * 1.1,
-            p2.lateral, p2.lift,
-            clusterScale(rnd() < 0.75 ? 'clusterSmall' : 'clusterMedium') * 0.9 * debugScale
-          );
+      if (rnd() < 0.72) {
+        const p2 = sampleWallPacked(sideSign, 9.5, 10.05, elev + (rnd() - 0.5) * 0.1);
+        if (rnd() < 0.26) {
+          const key = rnd() < 0.78 ? 'clusterSmall' : 'clusterMedium';
+          queue(key, dd + (rnd() - 0.5) * 1.1, p2.lateral, p2.lift, clusterScale(key) * 0.9 * debugScale);
         } else {
           queue(
             pickParticleKey(true),
@@ -821,8 +820,8 @@ function buildSilicaField() {
   } else {
     flowGroup.visible = true;
     infraGroup.visible = true;
-    mats.columnWall.opacity = 0.52;
-    if (mats.columnInnerContour) mats.columnInnerContour.opacity = 0.22;
+    mats.columnWall.opacity = 0.58;
+    if (mats.columnInnerContour) mats.columnInnerContour.opacity = 0.26;
   }
 }
 
