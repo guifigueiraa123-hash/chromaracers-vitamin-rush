@@ -606,8 +606,8 @@ function placeSilicaInstance(layerKey, distance, lateral, lift, scale) {
 
 function pickClusterKey(weight = 1) {
   const r = rnd() * weight;
-  if (r < 0.34) return 'clusterLarge';
-  if (r < 0.78) return 'clusterMedium';
+  if (r < 0.3) return 'clusterLarge';
+  if (r < 0.72) return 'clusterMedium';
   return 'clusterSmall';
 }
 
@@ -701,7 +701,7 @@ function buildSilicaField() {
         // Overlapping knit
         {
           const p2 = sampleWallPacked(sideSign, 9.05, 10.08, elev + (rnd() - 0.5) * 0.12);
-          if (rnd() < 0.7) {
+          if (rnd() < 0.58) {
             const key = pickClusterKey(0.95);
             queue(key, dd + (rnd() - 0.5) * 0.8, p2.lateral, p2.lift, clusterScale(key) * 0.9 * debugScale);
           } else {
@@ -710,9 +710,9 @@ function buildSilicaField() {
         }
 
         // Gap filler
-        if (rnd() < 0.85 * density) {
+        if (rnd() < 0.88 * density) {
           const p3 = sampleWallPacked(sideSign, 8.95, 9.9, elev + (rnd() - 0.5) * 0.18);
-          if (rnd() < 0.35) {
+          if (rnd() < 0.28) {
             queue('clusterSmall', dd + (rnd() - 0.5) * 1.0, p3.lateral, p3.lift, clusterScale('clusterSmall') * 0.82 * debugScale);
           } else {
             queue(pickParticleKey(), dd + (rnd() - 0.5) * 1.05, p3.lateral, p3.lift, particleScale() * 0.9 * debugScale);
