@@ -444,18 +444,18 @@ scene.add(detectorGroup);
 
 const texLoader = new THREE.TextureLoader();
 
-// Column shell — subtle wall substrate behind packed silica (not neon tunnel)
+// Column shell — wall substrate behind packed silica (not neon tunnel)
 mats.columnWall = new THREE.MeshBasicMaterial({
-  color: 0x35284e,
+  color: 0x3d2f5c,
   transparent: true,
-  opacity: 0.82,
+  opacity: 0.9,
   side: THREE.BackSide,
   depthWrite: false,
 });
 mats.columnInnerContour = new THREE.MeshBasicMaterial({
-  color: 0x5a4680,
+  color: 0x6a5290,
   transparent: true,
-  opacity: 0.22,
+  opacity: 0.18,
   side: THREE.BackSide,
   depthWrite: false,
 });
@@ -659,7 +659,8 @@ function buildColumnStructure() {
 
 /**
  * Stationary-phase packing — CLUSTER-FIRST continuous L/R wall beds.
- * Dense overlapping bands cling to the inner column wall; corridor stays clear.
+ * Sprites are ~40–55% opaque; scales/overlap are tuned so packed bands
+ * read as wall material rather than floating grape clusters.
  */
 function buildSilicaField() {
   clearGroup(silicaGroup);
@@ -667,17 +668,17 @@ function buildSilicaField() {
   silicaStats.clusters = 0;
   silicaStats.instances = 0;
 
-  const mul = Math.min(1.25, qualityState.particleMul * (DEBUG_SILICA ? 1.25 : 1));
-  const debugScale = DEBUG_SILICA ? 1.08 : 1;
+  const mul = Math.min(1.3, qualityState.particleMul * (DEBUG_SILICA ? 1.3 : 1));
+  const debugScale = DEBUG_SILICA ? 1.1 : 1;
 
-  // Budgets sized for dense wall knit via InstancedMesh (not individual Meshes).
+  // Budgets for dense wall knit via InstancedMesh.
   const budgets = {
-    clusterLarge: Math.floor(3200 * mul),
-    clusterMedium: Math.floor(5200 * mul),
-    clusterSmall: Math.floor(3600 * mul),
-    particleLarge: Math.floor(2800 * mul),
-    particleMedium: Math.floor(4200 * mul),
-    particleSmall: Math.floor(2600 * mul),
+    clusterLarge: Math.floor(4200 * mul),
+    clusterMedium: Math.floor(7000 * mul),
+    clusterSmall: Math.floor(4800 * mul),
+    particleLarge: Math.floor(3800 * mul),
+    particleMedium: Math.floor(5600 * mul),
+    particleSmall: Math.floor(3600 * mul),
   };
 
   Object.keys(silicaLayers).forEach((key) => {
@@ -692,101 +693,104 @@ function buildSilicaField() {
     silicaGroup.add(mesh);
   });
 
+  // Scale helpers — compensate for transparent padding in approved sprites.
+  const clusterScale = (key) => {
+    if (key === 'clusterLarge') return 2.85 + rnd() * 0.65;
+    if (key === 'clusterMedium') return 2.35 + rnd() * 0.55;
+    return 1.85 + rnd() * 0.45;
+  };
+  const particleScale = () => 0.95 + rnd() * 0.55;
+
   // Primary structure: continuous LEFT / RIGHT packed wall slabs.
-  const step = Math.max(1.45, 1.7 / Math.max(0.55, mul));
-  const elevSlots = 9;
+  const step = Math.max(1.15, 1.35 / Math.max(0.55, mul));
+  const elevSlots = 11;
   for (let d0 = 2; d0 < RACE_DISTANCE - 4; d0 += step) {
     // Local clustering waves: dense patch → transition → dense patch
-    const wave = 0.5 + 0.5 * Math.sin(d0 * 0.078) * Math.cos(d0 * 0.029);
-    const density = 0.78 + 0.22 * wave;
+    const wave = 0.5 + 0.5 * Math.sin(d0 * 0.072) * Math.cos(d0 * 0.027);
+    const density = 0.88 + 0.12 * wave;
 
     for (const sideSign of [-1, 1]) {
       for (let e = 0; e < elevSlots; e++) {
         if (rnd() > density) continue;
 
         const t = e / (elevSlots - 1);
-        // Side-wall arc: dense mid-wall, still covers upper/lower shoulders
-        const elev = (t - 0.5) * 1.42;
-        const dd = d0 + (rnd() - 0.5) * step * 0.95;
+        // Wide side-wall arc (upper + lower shoulders) — still biased off-center
+        const elev = (t - 0.5) * 1.72;
+        const dd = d0 + (rnd() - 0.5) * step * 0.98;
 
-        // NEAR-WALL structural cluster (main bed r ≈ 9.15–10.1)
+        // NEAR-WALL structural cluster (main bed r ≈ 9.2–10.1)
         {
-          const p = sampleWallPacked(sideSign, 9.15, 10.1, elev + (rnd() - 0.5) * 0.08);
+          const p = sampleWallPacked(sideSign, 9.2, 10.1, elev + (rnd() - 0.5) * 0.06);
           const key = pickClusterKey();
-          const scale = key === 'clusterLarge'
-            ? 2.15 + rnd() * 0.55
-            : key === 'clusterMedium'
-              ? 1.75 + rnd() * 0.45
-              : 1.35 + rnd() * 0.35;
-          placeSilicaInstance(key, dd, p.lateral, p.lift, scale * debugScale);
+          placeSilicaInstance(key, dd, p.lateral, p.lift, clusterScale(key) * debugScale);
         }
 
-        // Knit neighbor — slight overlap kills floating-island look
-        if (rnd() < 0.92 * density) {
+        // Overlapping knit neighbor
+        {
           const p2 = sampleWallPacked(
             sideSign,
-            9.0 + rnd() * 0.85,
-            10.05,
-            elev + (rnd() - 0.5) * 0.16
+            9.05 + rnd() * 0.9,
+            10.08,
+            elev + (rnd() - 0.5) * 0.14
           );
-          if (rnd() < 0.62) {
-            const key = pickClusterKey(0.9);
-            const scale = key === 'clusterLarge'
-              ? 1.9 + rnd() * 0.45
-              : key === 'clusterMedium'
-                ? 1.55 + rnd() * 0.4
-                : 1.2 + rnd() * 0.3;
+          if (rnd() < 0.68) {
+            const key = pickClusterKey(0.95);
             placeSilicaInstance(
               key,
-              dd + (rnd() - 0.5) * 1.1,
+              dd + (rnd() - 0.5) * 0.85,
               p2.lateral, p2.lift,
-              scale * debugScale
+              clusterScale(key) * 0.92 * debugScale
             );
           } else {
             placeSilicaInstance(
               pickParticleKey(),
-              dd + (rnd() - 0.5) * 1.25,
+              dd + (rnd() - 0.5) * 0.95,
               p2.lateral, p2.lift,
-              (0.75 + rnd() * 0.4) * debugScale
+              particleScale() * debugScale
             );
           }
         }
 
-        // Granular gap filler (slightly inward from wall face)
-        if (rnd() < 0.7 * density) {
-          const p3 = sampleWallPacked(
-            sideSign,
-            8.85,
-            9.75,
-            elev + (rnd() - 0.5) * 0.2
+        // Second knit + granular fillers to erase negative space
+        if (rnd() < 0.9 * density) {
+          const p3 = sampleWallPacked(sideSign, 8.95, 9.85, elev + (rnd() - 0.5) * 0.18);
+          placeSilicaInstance(
+            rnd() < 0.4 ? pickClusterKey(0.7) : pickParticleKey(),
+            dd + (rnd() - 0.5) * 1.1,
+            p3.lateral, p3.lift,
+            (rnd() < 0.4 ? clusterScale('clusterSmall') * 0.85 : particleScale()) * debugScale
           );
+        }
+        if (rnd() < 0.75 * density) {
+          const p4 = sampleWallPacked(sideSign, 9.0, 9.9, elev + (rnd() - 0.5) * 0.22);
           placeSilicaInstance(
             pickParticleKey(),
-            dd + (rnd() - 0.5) * 1.35,
-            p3.lateral, p3.lift,
-            (0.55 + rnd() * 0.35) * debugScale
+            dd + (rnd() - 0.5) * 1.2,
+            p4.lateral, p4.lift,
+            particleScale() * 0.85 * debugScale
           );
         }
       }
 
-      // Extra mid-wall patch burst every few stations (local clustering)
-      if (rnd() < 0.55 * density) {
-        const elev0 = (rnd() - 0.5) * 0.9;
-        for (let k = 0; k < 3; k++) {
-          const p = sampleWallPacked(sideSign, 9.2, 10.08, elev0 + (rnd() - 0.5) * 0.28);
-          if (rnd() < 0.65) {
+      // Local dense patch bursts (packed bed clumps along the wall)
+      if (rnd() < 0.7 * density) {
+        const elev0 = (rnd() - 0.5) * 1.15;
+        for (let k = 0; k < 5; k++) {
+          const p = sampleWallPacked(sideSign, 9.15, 10.08, elev0 + (rnd() - 0.5) * 0.32);
+          if (rnd() < 0.62) {
+            const key = pickClusterKey();
             placeSilicaInstance(
-              pickClusterKey(),
+              key,
               d0 + rnd() * step,
               p.lateral, p.lift,
-              (1.5 + rnd() * 0.55) * debugScale
+              clusterScale(key) * 0.9 * debugScale
             );
           } else {
             placeSilicaInstance(
               pickParticleKey(),
               d0 + rnd() * step,
               p.lateral, p.lift,
-              (0.6 + rnd() * 0.35) * debugScale
+              particleScale() * debugScale
             );
           }
         }
@@ -795,52 +799,53 @@ function buildSilicaField() {
   }
 
   // FAR depth dust — small particles hugging the wall (not mid-corridor)
-  const farStep = Math.max(2.4, 2.9 / Math.max(0.55, mul));
-  for (let d0 = 4; d0 < RACE_DISTANCE - 6; d0 += farStep) {
+  const farStep = Math.max(1.8, 2.2 / Math.max(0.55, mul));
+  for (let d0 = 3; d0 < RACE_DISTANCE - 5; d0 += farStep) {
     for (const sideSign of [-1, 1]) {
-      for (let n = 0; n < 3; n++) {
-        if (rnd() > 0.75) continue;
-        const elev = (rnd() - 0.5) * 1.25;
-        const p = sampleWallPacked(sideSign, 9.35, 10.1, elev);
+      for (let n = 0; n < 4; n++) {
+        if (rnd() > 0.82) continue;
+        const elev = (rnd() - 0.5) * 1.55;
+        const p = sampleWallPacked(sideSign, 9.4, 10.1, elev);
         placeSilicaInstance(
-          'particleSmall',
+          rnd() > 0.55 ? 'particleSmall' : 'particleMedium',
           d0 + rnd() * farStep,
           p.lateral, p.lift,
-          (0.42 + rnd() * 0.28) * debugScale
+          (0.55 + rnd() * 0.4) * debugScale
         );
       }
     }
   }
 
   // Ceiling / floor shoulders — stitch packed bed without closing corridor
-  const stitchStep = Math.max(2.8, 3.3 / Math.max(0.55, mul));
-  for (let d0 = 3; d0 < RACE_DISTANCE - 5; d0 += stitchStep) {
+  const stitchStep = Math.max(1.9, 2.3 / Math.max(0.55, mul));
+  for (let d0 = 2; d0 < RACE_DISTANCE - 4; d0 += stitchStep) {
     for (const upSign of [-1, 1]) {
-      for (let n = 0; n < 2; n++) {
-        if (rnd() > 0.8) continue;
-        const r = 9.25 + rnd() * 0.8;
+      for (let n = 0; n < 3; n++) {
+        if (rnd() > 0.85) continue;
+        const r = 9.3 + rnd() * 0.75;
         // Keep shoulders near L/R walls — avoid blocking center view
-        let lateral = (rnd() > 0.5 ? 1 : -1) * (GAME_CONFIG.laneWidth * 2.1 + rnd() * 3.2);
-        let lift = upSign * r * (0.72 + rnd() * 0.22);
+        let lateral = (rnd() > 0.5 ? 1 : -1) * (GAME_CONFIG.laneWidth * 2.2 + rnd() * 3.6);
+        let lift = upSign * r * (0.68 + rnd() * 0.26);
         const hyp = Math.hypot(lateral, lift) || 1;
         lateral = (lateral / hyp) * r;
         lift = (lift / hyp) * r;
-        if (Math.abs(lateral) < GAME_CONFIG.laneWidth * 1.7) {
-          lateral = Math.sign(lateral || 1) * (GAME_CONFIG.laneWidth * 1.85 + rnd() * 0.6);
+        if (Math.abs(lateral) < GAME_CONFIG.laneWidth * 1.75) {
+          lateral = Math.sign(lateral || 1) * (GAME_CONFIG.laneWidth * 1.9 + rnd() * 0.55);
         }
-        if (rnd() < 0.6) {
+        if (rnd() < 0.65) {
+          const key = pickClusterKey(0.9);
           placeSilicaInstance(
-            pickClusterKey(0.85),
+            key,
             d0 + rnd() * stitchStep,
             lateral, lift,
-            (1.55 + rnd() * 0.5) * debugScale
+            clusterScale(key) * 0.88 * debugScale
           );
         } else {
           placeSilicaInstance(
             pickParticleKey(),
             d0 + rnd() * stitchStep,
             lateral, lift,
-            (0.65 + rnd() * 0.35) * debugScale
+            particleScale() * debugScale
           );
         }
       }
@@ -857,13 +862,13 @@ function buildSilicaField() {
   if (DEBUG_SILICA) {
     flowGroup.visible = false;
     infraGroup.visible = false;
-    mats.columnWall.opacity = 0.4;
-    if (mats.columnInnerContour) mats.columnInnerContour.opacity = 0.45;
+    mats.columnWall.opacity = 0.45;
+    if (mats.columnInnerContour) mats.columnInnerContour.opacity = 0.5;
   } else {
     flowGroup.visible = true;
     infraGroup.visible = true;
-    mats.columnWall.opacity = 0.82;
-    if (mats.columnInnerContour) mats.columnInnerContour.opacity = 0.22;
+    mats.columnWall.opacity = 0.9;
+    if (mats.columnInnerContour) mats.columnInnerContour.opacity = 0.18;
   }
 }
 
@@ -1926,7 +1931,19 @@ state.mode = 'menu';
 animate();
 
 // Expose config for debugging / easy distance change verification
+function snapCameraToPlayer() {
+  const t = THREE.MathUtils.clamp(state.distance / RACE_DISTANCE, 0, 0.998);
+  const f = frameAt(t);
+  camera.position.copy(worldAt(state.distance - GAME_CONFIG.camera.back, state.laneVisual * 0.35, GAME_CONFIG.camera.height, _tmp));
+  const look = worldAt(state.distance + GAME_CONFIG.camera.lookAhead, state.laneVisual * 0.2, 1.4, _tmp2);
+  look.addScaledVector(f.trueUp, 0.4);
+  camera.up.copy(f.trueUp);
+  camera.lookAt(look);
+  camera.fov = GAME_CONFIG.camera.baseFov;
+  camera.updateProjectionMatrix();
+}
+
 window.CHROMARACERS = {
   GAME_CONFIG, RACE_DISTANCE, SECTORS, state, Storage, rivals, vita, spriteActors,
-  DEBUG_SILICA, silicaStats, silicaGroup,
+  DEBUG_SILICA, silicaStats, silicaGroup, snapCameraToPlayer,
 };
