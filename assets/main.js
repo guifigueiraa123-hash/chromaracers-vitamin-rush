@@ -314,8 +314,8 @@ function applyQuality(mode, fpsHint = 60) {
 const mount = $('game');
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x101c3a);
-// Slightly lighter fog so the wider shell rim stays readable at frame edges
-scene.fog = new THREE.FogExp2(0x101c3a, 0.0028);
+// Low fog so the wide shell (R=18) remains visible at frame edges from gameplay cam
+scene.fog = new THREE.FogExp2(0x101c3a, 0.0018);
 
 const camera = new THREE.PerspectiveCamera(
   GAME_CONFIG.camera.baseFov,
@@ -485,25 +485,25 @@ function createColumnWallTexture() {
   c.height = 256;
   const ctx = c.getContext('2d');
 
-  // Circumferential glass gradient (V wraps the tube): ceiling darker, mid walls structural, lower slightly clearer
+  // Circumferential glass gradient (V wraps the tube): ceiling darker, mid walls brighter so R reads large
   const radial = ctx.createLinearGradient(0, 0, 0, 256);
-  radial.addColorStop(0, '#0c152c'); // upper seam toward ceiling
-  radial.addColorStop(0.12, '#101c3a'); // calm upper mobile-phase zone cue
-  radial.addColorStop(0.32, '#142848');
-  radial.addColorStop(0.5, '#183a67'); // structural mid-wall
-  radial.addColorStop(0.68, '#152f56');
-  radial.addColorStop(0.85, '#122640');
-  radial.addColorStop(1, '#0c152c');
+  radial.addColorStop(0, '#0e1834');
+  radial.addColorStop(0.14, '#101c3a');
+  radial.addColorStop(0.34, '#1a3a68');
+  radial.addColorStop(0.5, '#244e86'); // brighter structural mid-wall for rim readability
+  radial.addColorStop(0.66, '#1a3a68');
+  radial.addColorStop(0.84, '#13284c');
+  radial.addColorStop(1, '#0e1834');
   ctx.fillStyle = radial;
   ctx.fillRect(0, 0, 512, 256);
 
-  // Soft inner-wall glass catch light (mid band) — translucent depth, not neon
-  const highlight = ctx.createLinearGradient(0, 56, 0, 150);
+  // Soft inner-wall glass catch light — helps near walls read at FOV edges
+  const highlight = ctx.createLinearGradient(0, 48, 0, 160);
   highlight.addColorStop(0, 'rgba(232,248,255,0)');
-  highlight.addColorStop(0.45, 'rgba(77,217,245,0.035)');
+  highlight.addColorStop(0.45, 'rgba(77,217,245,0.07)');
   highlight.addColorStop(1, 'rgba(232,248,255,0)');
   ctx.fillStyle = highlight;
-  ctx.fillRect(0, 56, 512, 94);
+  ctx.fillRect(0, 48, 512, 112);
 
   // Longitudinal glass striae (U along spline path)
   for (let i = 0; i < 16; i++) {
@@ -548,14 +548,14 @@ mats.columnWall = new THREE.MeshBasicMaterial({
   map: COLUMN_WALL_TEX,
   color: 0xffffff,
   transparent: true,
-  opacity: 0.92,
+  opacity: 0.96,
   side: THREE.BackSide,
   depthWrite: true,
 });
 mats.columnInnerLiner = new THREE.MeshBasicMaterial({
-  color: 0x183a67,
+  color: 0x244e86,
   transparent: true,
-  opacity: 0.16,
+  opacity: 0.2,
   side: THREE.BackSide,
   depthWrite: false,
 });
@@ -614,13 +614,13 @@ function clearGroup(group) {
 function columnVisualProfile(distance) {
   const t = distance / RACE_DISTANCE;
   // Soft fog — walls stay readable; far end darkens toward the detector horizon.
-  // Phase A fog tints track column wall navy (#101C3A) — not a lighting polish pass
-  if (t < 0.2) return { silica: 0.75, flow: 0.7, mol: 0.45, fog: 0.004, tint: 0x101c3a };
-  if (t < 0.4) return { silica: 1.15, flow: 0.85, mol: 0.7, fog: 0.0043, tint: 0x112040 };
-  if (t < 0.6) return { silica: 1.0, flow: 1.0, mol: 1.2, fog: 0.0045, tint: 0x122244 };
-  if (t < 0.8) return { silica: 0.95, flow: 1.25, mol: 1.1, fog: 0.0046, tint: 0x101c3a };
-  if (t < 0.967) return { silica: 0.85, flow: 1.1, mol: 0.7, fog: 0.0034, tint: 0x0e1a36 };
-  return { silica: 0.6, flow: 0.85, mol: 0.35, fog: 0.0026, tint: 0x101c3a };
+  // Phase A: keep fog low so the R=18 shell rim stays visible (not a lighting polish pass)
+  if (t < 0.2) return { silica: 0.75, flow: 0.7, mol: 0.45, fog: 0.0022, tint: 0x101c3a };
+  if (t < 0.4) return { silica: 1.15, flow: 0.85, mol: 0.7, fog: 0.0024, tint: 0x112040 };
+  if (t < 0.6) return { silica: 1.0, flow: 1.0, mol: 1.2, fog: 0.0025, tint: 0x122244 };
+  if (t < 0.8) return { silica: 0.95, flow: 1.25, mol: 1.1, fog: 0.0026, tint: 0x101c3a };
+  if (t < 0.967) return { silica: 0.85, flow: 1.1, mol: 0.7, fog: 0.002, tint: 0x0e1a36 };
+  return { silica: 0.6, flow: 0.85, mol: 0.35, fog: 0.0016, tint: 0x101c3a };
 }
 
 const flowParticles = [];
