@@ -1327,13 +1327,13 @@ function updateDetectorApproach(dist) {
   detectorCore.scale.set(coreScale, coreScale, coreScale * 0.5);
   mats.detectorCore.opacity = 0.65 + far * 0.2 + subtle * 0.12 + bright * 0.1 + past * 0.08;
 
-  const haloS = 0.85 + far * 0.4 + subtle * 0.35 + clear * 0.35 + bright * 0.2;
-  detectorHaloMesh.scale.set(haloS, haloS, haloS * 0.4);
-  mats.detectorHalo.opacity = 0.08 + far * 0.1 + subtle * 0.1 + clear * 0.07 + bright * 0.04;
-  // Soft halo sprite — restrained; avoid giant portal disc
-  const spriteS = 1.15 + far * 0.8 + subtle * 0.5 + clear * 0.55 + bright * 0.25;
-  detectorHaloSprite.scale.set(spriteS, spriteS, 1);
-  detectorHaloSprite.material.opacity = 0.12 + far * 0.12 + subtle * 0.1 + clear * 0.08;
+  // Halo shrinks on approach — distant speck only; never a portal disc up close
+  const haloS = 0.9 + far * 0.45 + subtle * 0.25 + clear * 0.15 - close * 0.25;
+  detectorHaloMesh.scale.set(Math.max(0.4, haloS), Math.max(0.4, haloS), Math.max(0.25, haloS * 0.4));
+  mats.detectorHalo.opacity = 0.1 + far * 0.1 + subtle * 0.08 + clear * 0.04 - close * 0.04;
+  const spriteS = 1.2 + far * 0.75 + subtle * 0.35 + clear * 0.2 - close * 0.45;
+  detectorHaloSprite.scale.set(Math.max(0.6, spriteS), Math.max(0.6, spriteS), 1);
+  detectorHaloSprite.material.opacity = Math.max(0.04, 0.14 + far * 0.1 + subtle * 0.08 - close * 0.08);
 
   // Housing fades in at medium range; fully readable <30 m
   const houseScale = 0.48 + clear * 0.42 + close * 0.35 + past * 0.2;
@@ -1350,14 +1350,15 @@ function updateDetectorApproach(dist) {
     }
   });
 
-  // Face sprite only near range — keep compact so it reads as instrument, not portal
+  // Face sprite only near range — compact instrument panel, not a finish gate
   detectorFace.visible = clear > 0.25 || past > 0.2;
-  detectorFace.material.opacity = 0.08 + clear * 0.4 + close * 0.35 + past * 0.3;
-  const faceS = 1.4 + clear * 0.9 + close * 0.7 + past * 0.4;
+  detectorFace.material.opacity = 0.1 + clear * 0.45 + close * 0.3 + past * 0.25;
+  const faceS = 1.2 + clear * 0.7 + close * 0.55 + past * 0.3;
   detectorFace.scale.set(faceS, faceS * 0.66, 1);
 
-  mats.detectorUv.opacity = 0.22 + clear * 0.4 + bright * 0.3 + past * 0.25;
-  detectorGlow.intensity = 0.25 + far * 0.35 + subtle * 0.4 + clear * 0.35 + bright * 0.35 + close * 0.25;
+  mats.detectorUv.opacity = 0.2 + clear * 0.35 + bright * 0.25 + past * 0.2;
+  // Cap close glow — local wash only, no screen-filling bloom
+  detectorGlow.intensity = Math.min(1.35, 0.22 + far * 0.3 + subtle * 0.35 + clear * 0.3 + bright * 0.25 + close * 0.15);
   detectorGlow.distance = 24 + clear * 20 + bright * 12 + close * 8;
   detectorFill.intensity = 0.05 + clear * 0.12 + close * 0.2 + past * 0.12;
 
