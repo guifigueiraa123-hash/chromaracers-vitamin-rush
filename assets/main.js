@@ -435,7 +435,7 @@ const DEBUG_SILICA = false;
  * When true: show ONLY column shell + corridor + player (no silica/flow/molecules/decor).
  * Not exposed in player-facing UI.
  */
-const DEBUG_COLUMN = true; // temporarily true for architecture validation screenshots; flip to false after
+const DEBUG_COLUMN = false;
 
 const envGroup = new THREE.Group();
 scene.add(envGroup);
