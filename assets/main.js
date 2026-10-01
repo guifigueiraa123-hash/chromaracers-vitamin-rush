@@ -448,7 +448,7 @@ const DEBUG_COLUMN = false;
  * Dev-only detector focus mode.
  * When true: hide silica/flow/molecules/unrelated decor; show column + detector clearly.
  */
-const DEBUG_DETECTOR = false;
+const DEBUG_DETECTOR = true;
 
 /** UV/Vis detector mount distance along the race (finish = 1500). Near end of sector 9. */
 const DETECTOR_DISTANCE = 1480;
@@ -479,10 +479,12 @@ function createColumnWallTexture() {
   // Deep navy glass base with soft blue-violet curvature (V = around tube)
   const radial = ctx.createLinearGradient(0, 0, 0, 256);
   radial.addColorStop(0, '#0d1530');
-  radial.addColorStop(0.22, '#152848');
-  radial.addColorStop(0.5, '#243a62');
-  radial.addColorStop(0.72, '#1a2a4a');
-  radial.addColorStop(0.88, '#3a315e');
+  radial.addColorStop(0.18, '#152848');
+  radial.addColorStop(0.38, '#1e3560');
+  radial.addColorStop(0.5, '#2a4570');
+  radial.addColorStop(0.62, '#243a62');
+  radial.addColorStop(0.78, '#1a2a4a');
+  radial.addColorStop(0.9, '#3a315e');
   radial.addColorStop(1, '#0d1530');
   ctx.fillStyle = radial;
   ctx.fillRect(0, 0, 512, 256);
@@ -565,9 +567,9 @@ mats.columnThickness = new THREE.MeshBasicMaterial({
   depthWrite: false,
 });
 mats.columnSeam = new THREE.MeshBasicMaterial({
-  color: 0x5a6e92,
+  color: 0x4a6088,
   transparent: true,
-  opacity: 0.28,
+  opacity: 0.14,
   depthWrite: false,
 });
 mats.columnClamp = new THREE.MeshBasicMaterial({
@@ -797,10 +799,10 @@ function buildColumnStructure() {
   buildColumnClamps(R - 0.15);
 }
 
-/** Thin longitudinal glass seams — cylindrical readability, not neon ribs. */
+/** Thin longitudinal glass seams — L/R only, very subtle (no crosshair). */
 function buildColumnSeams(tubularSegments, radius) {
-  const angles = [-0.85, 0.85, 2.2, -2.2]; // L/R walls + mild upper/lower
-  const seamSegs = Math.floor(tubularSegments * 0.7);
+  const angles = [-1.05, 1.05]; // left/right walls only
+  const seamSegs = Math.floor(tubularSegments * 0.65);
   for (let ai = 0; ai < angles.length; ai++) {
     const ang = angles[ai];
     const pts = [];
@@ -813,7 +815,7 @@ function buildColumnSeams(tubularSegments, radius) {
       pts.push(p);
     }
     const seamCurve = new THREE.CatmullRomCurve3(pts, false, 'catmullrom', 0.15);
-    const seamGeo = new THREE.TubeGeometry(seamCurve, seamSegs, 0.028, 4, false);
+    const seamGeo = new THREE.TubeGeometry(seamCurve, seamSegs, 0.016, 3, false);
     const seam = new THREE.Mesh(seamGeo, mats.columnSeam);
     seam.renderOrder = -1;
     envGroup.add(seam);
@@ -1287,18 +1289,19 @@ const detector = detectorFace;
 function placeDetector() {
   const t = THREE.MathUtils.clamp(DETECTOR_DISTANCE / RACE_DISTANCE, 0, 0.999);
   const f = frameAt(t);
-  // Slightly elevated on corridor axis so the optical core clears wall silica
-  const p = worldAt(DETECTOR_DISTANCE, 0, 1.35);
+  // Low on the far column end — horizon anchor under the race corridor (not a portal disc)
+  const p = worldAt(DETECTOR_DISTANCE, 0, -0.35);
+  p.addScaledVector(f.trueUp, -0.55);
   detectorGroup.position.copy(p);
   // Face toward oncoming racers (against race tangent)
   detectorGroup.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), f.tangent.clone().negate());
-  detectorHousing.position.set(0, 0.1, 0);
-  detectorFace.position.set(0, 0.25, 1.55);
-  detectorHaloSprite.position.set(0, 0.25, 1.4);
-  detectorCore.position.set(0, 0.1, 1.4);
-  detectorHaloMesh.position.set(0, 0.1, 1.25);
-  detectorGlow.position.set(0, 0.3, 1.9);
-  detectorFill.position.set(0, 0.15, 1.1);
+  detectorHousing.position.set(0, 0.35, 0);
+  detectorFace.position.set(0, 0.55, 1.45);
+  detectorHaloSprite.position.set(0, 0.55, 1.3);
+  detectorCore.position.set(0, 0.4, 1.3);
+  detectorHaloMesh.position.set(0, 0.4, 1.15);
+  detectorGlow.position.set(0, 0.55, 1.8);
+  detectorFill.position.set(0, 0.3, 1.0);
 }
 
 /** Purely visual UV/Vis approach staging — does not alter race logic. */
@@ -1347,13 +1350,14 @@ function updateDetectorApproach(dist) {
     }
   });
 
-  detectorFace.visible = clear > 0.1 || past > 0.2;
-  detectorFace.material.opacity = 0.1 + clear * 0.55 + close * 0.3 + past * 0.35;
-  const faceS = 1.8 + clear * 1.4 + close * 1.0 + past * 0.6;
+  // Face sprite only near range — keep compact so it reads as instrument, not portal
+  detectorFace.visible = clear > 0.25 || past > 0.2;
+  detectorFace.material.opacity = 0.08 + clear * 0.4 + close * 0.35 + past * 0.3;
+  const faceS = 1.4 + clear * 0.9 + close * 0.7 + past * 0.4;
   detectorFace.scale.set(faceS, faceS * 0.66, 1);
 
   mats.detectorUv.opacity = 0.22 + clear * 0.4 + bright * 0.3 + past * 0.25;
-  detectorGlow.intensity = 0.2 + far * 0.25 + subtle * 0.35 + clear * 0.4 + bright * 0.45 + close * 0.3;
+  detectorGlow.intensity = 0.25 + far * 0.35 + subtle * 0.4 + clear * 0.35 + bright * 0.35 + close * 0.25;
   detectorGlow.distance = 24 + clear * 20 + bright * 12 + close * 8;
   detectorFill.intensity = 0.05 + clear * 0.12 + close * 0.2 + past * 0.12;
 
