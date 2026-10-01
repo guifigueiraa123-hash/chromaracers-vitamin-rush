@@ -424,13 +424,13 @@ const mats = {
   detectorAccent: new THREE.MeshBasicMaterial({ color: 0x5de5ff }),
   detectorAmber: new THREE.MeshBasicMaterial({ color: 0xf2a33a }),
   detectorUv: new THREE.MeshBasicMaterial({
-    color: 0x5de5ff, transparent: true, opacity: 0.7, blending: THREE.AdditiveBlending, depthWrite: false,
+    color: 0x5de5ff, transparent: true, opacity: 0.7, blending: THREE.AdditiveBlending, depthWrite: false, fog: false,
   }),
   detectorCore: new THREE.MeshBasicMaterial({
-    color: 0xe8f8ff, transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending, depthWrite: false,
+    color: 0xe8f8ff, transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending, depthWrite: false, fog: false,
   }),
   detectorHalo: new THREE.MeshBasicMaterial({
-    color: 0x5de5ff, transparent: true, opacity: 0.22, blending: THREE.AdditiveBlending, depthWrite: false,
+    color: 0x5de5ff, transparent: true, opacity: 0.22, blending: THREE.AdditiveBlending, depthWrite: false, fog: false,
   }),
 };
 
@@ -450,8 +450,8 @@ const DEBUG_COLUMN = false;
  */
 const DEBUG_DETECTOR = false;
 
-/** UV/Vis detector mount distance along the race (finish = 1500). */
-const DETECTOR_DISTANCE = 1450;
+/** UV/Vis detector mount distance along the race (finish = 1500). Near end of sector 9. */
+const DETECTOR_DISTANCE = 1480;
 
 const envGroup = new THREE.Group();
 scene.add(envGroup);
@@ -490,16 +490,24 @@ function createColumnWallTexture() {
   // Soft glass highlight band (inner-wall catch light)
   const highlight = ctx.createLinearGradient(0, 40, 0, 140);
   highlight.addColorStop(0, 'rgba(232,248,255,0)');
-  highlight.addColorStop(0.45, 'rgba(93,229,255,0.045)');
+  highlight.addColorStop(0.45, 'rgba(93,229,255,0.07)');
   highlight.addColorStop(1, 'rgba(232,248,255,0)');
   ctx.fillStyle = highlight;
   ctx.fillRect(0, 48, 512, 88);
 
+  // Secondary mid-tone band — translucent glass depth
+  const midBand = ctx.createLinearGradient(0, 100, 0, 200);
+  midBand.addColorStop(0, 'rgba(36,58,98,0)');
+  midBand.addColorStop(0.5, 'rgba(58,49,94,0.12)');
+  midBand.addColorStop(1, 'rgba(21,40,72,0)');
+  ctx.fillStyle = midBand;
+  ctx.fillRect(0, 100, 512, 100);
+
   // Very subtle longitudinal reflections (U along path) — glass striae, not neon seams
-  for (let i = 0; i < 18; i++) {
-    const x = (i / 18) * 512 + (Math.random() - 0.5) * 8;
-    const w = 1 + Math.random() * 2.5;
-    ctx.fillStyle = `rgba(232,248,255,${0.015 + Math.random() * 0.03})`;
+  for (let i = 0; i < 22; i++) {
+    const x = (i / 22) * 512 + (Math.random() - 0.5) * 8;
+    const w = 1 + Math.random() * 2.2;
+    ctx.fillStyle = `rgba(232,248,255,${0.02 + Math.random() * 0.035})`;
     ctx.fillRect(x, 0, w, 256);
   }
 
@@ -538,14 +546,14 @@ mats.columnWall = new THREE.MeshBasicMaterial({
   map: COLUMN_WALL_TEX,
   color: 0xffffff,
   transparent: true,
-  opacity: 0.9,
+  opacity: 0.94,
   side: THREE.BackSide,
   depthWrite: true,
 });
 mats.columnInnerLiner = new THREE.MeshBasicMaterial({
   color: 0x243a62,
   transparent: true,
-  opacity: 0.18,
+  opacity: 0.22,
   side: THREE.BackSide,
   depthWrite: false,
 });
@@ -608,10 +616,10 @@ function columnVisualProfile(distance) {
   if (t < 0.4) return { silica: 1.15, flow: 0.85, mol: 0.7, fog: 0.0045, tint: 0x101a36 };
   if (t < 0.6) return { silica: 1.0, flow: 1.0, mol: 1.2, fog: 0.0047, tint: 0x121f3c };
   if (t < 0.8) return { silica: 0.95, flow: 1.25, mol: 1.1, fog: 0.0049, tint: 0x0f1c38 };
-  // Approach zone (~1200–1450): darker column, clearer distant optical core
-  if (t < 0.967) return { silica: 0.85, flow: 1.2, mol: 0.75, fog: 0.004, tint: 0x0a1228 };
-  // Detector sector: slightly clearer air around the instrument
-  return { silica: 0.65, flow: 0.9, mol: 0.4, fog: 0.0032, tint: 0x0c1830 };
+  // Approach zone: darker column, clearer air so distant optical core can read
+  if (t < 0.967) return { silica: 0.85, flow: 1.1, mol: 0.7, fog: 0.0034, tint: 0x0a1228 };
+  // Detector sector: clearer air around the instrument
+  return { silica: 0.6, flow: 0.85, mol: 0.35, fog: 0.0026, tint: 0x0c1830 };
 }
 
 const flowParticles = [];
@@ -1136,20 +1144,20 @@ function buildEnvironment() {
 
 function buildFlowChannels() {
   clearGroup(flowGroup);
-  // Extremely subtle corridor dust — NOT painted road lanes
-  const tickCount = Math.floor(36 * qualityState.particleMul);
+  // Sparse corridor motes only — gameplay lanes stay functional; no painted road
+  const tickCount = Math.floor(18 * qualityState.particleMul);
   const ticks = new THREE.InstancedMesh(geo.pixel, mats.flowSoft, tickCount);
   ticks.instanceMatrix.setUsage(THREE.StaticDrawUsage);
   const dummy = new THREE.Object3D();
   let ti = 0;
   for (let i = 0; i < tickCount; i++) {
-    const lane = LANES[i % 3] * 0.55;
+    const lane = LANES[i % 3] * 0.35;
     const d = (i / tickCount) * RACE_DISTANCE;
     const f = frameAt(THREE.MathUtils.clamp(d / RACE_DISTANCE, 0, 0.999));
-    worldAt(d, lane, 0.08 + (i % 4) * 0.05, dummy.position);
+    worldAt(d, lane, 0.06 + (i % 5) * 0.04, dummy.position);
     dummy.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), f.tangent);
-    const s = 0.04 + (i % 3) * 0.015;
-    dummy.scale.set(s * 0.4, s * 0.4, s * 1.2);
+    const s = 0.03 + (i % 3) * 0.01;
+    dummy.scale.set(s * 0.35, s * 0.35, s * 0.9);
     dummy.updateMatrix();
     ticks.setMatrixAt(ti++, dummy.matrix);
   }
@@ -1161,14 +1169,14 @@ function buildFlowChannels() {
 function spawnFlowParticles() {
   flowParticles.forEach((fp) => flowGroup.remove(fp.mesh));
   flowParticles.length = 0;
-  const count = Math.floor(180 * qualityState.particleMul);
+  const count = Math.floor(120 * qualityState.particleMul);
   for (let i = 0; i < count; i++) {
-    // Bias toward the three gameplay lanes without drawing road lines
-    const laneBias = LANES[i % 3] + (rnd() - 0.5) * 0.55;
+    // Soft solvent motes near gameplay lanes — not painted road dashes
+    const laneBias = LANES[i % 3] + (rnd() - 0.5) * 0.7;
     const mesh = new THREE.Mesh(geo.pixel, mats.flowPixel.clone());
-    mesh.material.opacity = 0.3 + rnd() * 0.55;
-    const s = 0.035 + rnd() * 0.1;
-    mesh.scale.set(s, s, s * (1.8 + rnd() * 3.2));
+    mesh.material.opacity = 0.12 + rnd() * 0.28;
+    const s = 0.025 + rnd() * 0.07;
+    mesh.scale.set(s, s, s * (1.4 + rnd() * 2.4));
     flowGroup.add(mesh);
     flowParticles.push({
       mesh,
@@ -1176,7 +1184,7 @@ function spawnFlowParticles() {
       offset: rnd() * RACE_DISTANCE,
       speed: 16 + rnd() * 26,
       wobble: rnd() * Math.PI * 2,
-      liftBase: 0.02 + rnd() * 0.85,
+      liftBase: 0.15 + rnd() * 1.1,
     });
   }
 }
@@ -1212,7 +1220,7 @@ detectorTex.magFilter = THREE.NearestFilter;
 detectorTex.minFilter = THREE.NearestFilter;
 
 const detectorFace = new THREE.Sprite(new THREE.SpriteMaterial({
-  map: detectorTex, transparent: true, depthWrite: false, opacity: 0.85,
+  map: detectorTex, transparent: true, depthWrite: false, opacity: 0.85, fog: false,
 }));
 detectorFace.scale.set(4.2, 2.8, 1);
 detectorFace.renderOrder = 4;
@@ -1223,6 +1231,7 @@ const detectorHaloSprite = new THREE.Sprite(new THREE.SpriteMaterial({
   transparent: true,
   opacity: 0.35,
   depthWrite: false,
+  fog: false,
   blending: THREE.AdditiveBlending,
 }));
 detectorHaloSprite.scale.set(2.4, 2.4, 1);
@@ -1278,63 +1287,81 @@ const detector = detectorFace;
 function placeDetector() {
   const t = THREE.MathUtils.clamp(DETECTOR_DISTANCE / RACE_DISTANCE, 0, 0.999);
   const f = frameAt(t);
-  const p = worldAt(DETECTOR_DISTANCE, 0, 1.15);
+  // Slightly elevated on corridor axis so the optical core clears wall silica
+  const p = worldAt(DETECTOR_DISTANCE, 0, 1.35);
   detectorGroup.position.copy(p);
   // Face toward oncoming racers (against race tangent)
   detectorGroup.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), f.tangent.clone().negate());
-  detectorHousing.position.set(0, 0.15, 0);
-  detectorFace.position.set(0, 0.35, 1.7);
-  detectorHaloSprite.position.set(0, 0.35, 1.55);
-  detectorCore.position.set(0, 0.15, 1.55);
-  detectorHaloMesh.position.set(0, 0.15, 1.4);
-  detectorGlow.position.set(0, 0.4, 2.0);
-  detectorFill.position.set(0, 0.2, 1.2);
+  detectorHousing.position.set(0, 0.1, 0);
+  detectorFace.position.set(0, 0.25, 1.55);
+  detectorHaloSprite.position.set(0, 0.25, 1.4);
+  detectorCore.position.set(0, 0.1, 1.4);
+  detectorHaloMesh.position.set(0, 0.1, 1.25);
+  detectorGlow.position.set(0, 0.3, 1.9);
+  detectorFill.position.set(0, 0.15, 1.1);
 }
 
 /** Purely visual UV/Vis approach staging — does not alter race logic. */
 function updateDetectorApproach(dist) {
   const toDet = DETECTOR_DISTANCE - dist;
-  // Visible as a distant optical speck from ~800 m out; not a portal/gate.
-  const showDetector = (!DEBUG_COLUMN || DEBUG_DETECTOR) && (DEBUG_DETECTOR || toDet < 800);
+  // Stay mounted through finish; distant speck from ~900 m out (not a portal).
+  const showDetector = (!DEBUG_COLUMN || DEBUG_DETECTOR) && (DEBUG_DETECTOR || toDet < 900);
   detectorGroup.visible = showDetector;
+  if (!showDetector) return;
 
   // Stages: <250 subtle, <150 clear, <75 brighter, <30 housing readable
-  const far = THREE.MathUtils.clamp(1 - toDet / 800, 0, 1);
+  const absTo = Math.abs(toDet);
+  const far = THREE.MathUtils.clamp(1 - Math.max(0, toDet) / 900, 0, 1);
   const subtle = THREE.MathUtils.clamp(1 - Math.max(0, toDet) / 250, 0, 1);
   const clear = THREE.MathUtils.clamp(1 - Math.max(0, toDet) / 150, 0, 1);
   const bright = THREE.MathUtils.clamp(1 - Math.max(0, toDet) / 75, 0, 1);
   const close = THREE.MathUtils.clamp(1 - Math.max(0, toDet) / 30, 0, 1);
+  // Past the mount: keep instrument readable until finish
+  const past = toDet < 0 ? THREE.MathUtils.clamp(1 - absTo / 25, 0.55, 1) : 0;
 
-  // Distant: small bright core; close: compact scientific instrument
-  const coreScale = 0.28 + far * 0.2 + subtle * 0.15 + bright * 0.3 + close * 0.22;
-  detectorCore.scale.set(coreScale, coreScale, coreScale * 0.6);
-  mats.detectorCore.opacity = 0.45 + far * 0.15 + subtle * 0.2 + bright * 0.2;
+  // Distant: small bright cyan-white core; close: compact scientific instrument
+  const coreScale = 0.32 + far * 0.22 + subtle * 0.18 + bright * 0.28 + close * 0.2 + past * 0.15;
+  detectorCore.scale.set(coreScale, coreScale, coreScale * 0.55);
+  mats.detectorCore.opacity = 0.55 + far * 0.2 + subtle * 0.15 + bright * 0.15 + past * 0.1;
 
-  const haloS = 0.85 + far * 0.45 + subtle * 0.35 + clear * 0.55 + bright * 0.35;
-  detectorHaloMesh.scale.set(haloS, haloS, haloS * 0.5);
-  mats.detectorHalo.opacity = 0.05 + far * 0.06 + subtle * 0.1 + clear * 0.08 + bright * 0.06;
-  const spriteS = 1.2 + far * 0.9 + subtle * 0.7 + clear * 1.0;
+  const haloS = 0.7 + far * 0.35 + subtle * 0.3 + clear * 0.4 + bright * 0.25;
+  detectorHaloMesh.scale.set(haloS, haloS, haloS * 0.45);
+  mats.detectorHalo.opacity = 0.06 + far * 0.08 + subtle * 0.1 + clear * 0.08 + bright * 0.05;
+  // Soft halo sprite — restrained; avoid giant portal disc
+  const spriteS = 1.0 + far * 0.7 + subtle * 0.55 + clear * 0.7 + bright * 0.35;
   detectorHaloSprite.scale.set(spriteS, spriteS, 1);
-  detectorHaloSprite.material.opacity = 0.08 + far * 0.08 + subtle * 0.14 + clear * 0.12;
+  detectorHaloSprite.material.opacity = 0.1 + far * 0.1 + subtle * 0.12 + clear * 0.1;
 
-  // Housing readable at medium/close range only
+  // Housing fades in at medium range; fully readable <30 m
+  const houseScale = 0.48 + clear * 0.42 + close * 0.35 + past * 0.2;
+  detectorHousing.scale.setScalar(houseScale);
   detectorHousing.visible = true;
-  detectorHousing.scale.setScalar(0.5 + clear * 0.4 + close * 0.3);
-  detectorFace.visible = clear > 0.12;
-  detectorFace.material.opacity = 0.12 + clear * 0.5 + close * 0.28;
-  const faceS = 2.0 + clear * 1.5 + close * 1.1;
+  // Dim housing body at long range so only the optical core reads far away
+  detectorHousing.traverse((child) => {
+    if (!child.isMesh || !child.material) return;
+    if (child === detectorCore || child === detectorHaloMesh) return;
+    if (child.material === mats.detectorUv || child.material === mats.detectorAmber) return;
+    if (child.material === mats.detectorBody || child.material === mats.detectorHousingDark
+        || child.material === mats.detectorAccent) {
+      // Shared mats — drive via group scale/visibility only
+    }
+  });
+
+  detectorFace.visible = clear > 0.1 || past > 0.2;
+  detectorFace.material.opacity = 0.1 + clear * 0.55 + close * 0.3 + past * 0.35;
+  const faceS = 1.8 + clear * 1.4 + close * 1.0 + past * 0.6;
   detectorFace.scale.set(faceS, faceS * 0.66, 1);
 
-  mats.detectorUv.opacity = 0.2 + clear * 0.35 + bright * 0.3;
-  detectorGlow.intensity = 0.12 + far * 0.12 + subtle * 0.3 + clear * 0.45 + bright * 0.55 + close * 0.35;
-  detectorGlow.distance = 22 + clear * 22 + bright * 14;
-  detectorFill.intensity = 0.04 + clear * 0.12 + close * 0.18;
+  mats.detectorUv.opacity = 0.22 + clear * 0.4 + bright * 0.3 + past * 0.25;
+  detectorGlow.intensity = 0.2 + far * 0.25 + subtle * 0.35 + clear * 0.4 + bright * 0.45 + close * 0.3;
+  detectorGlow.distance = 24 + clear * 20 + bright * 12 + close * 8;
+  detectorFill.intensity = 0.05 + clear * 0.12 + close * 0.2 + past * 0.12;
 
   // Soft local cyan wash near the detector — not whole-tunnel bloom
-  if (close > 0.08) {
-    accent.color.lerp(new THREE.Color(0x5de5ff), 0.035 * close);
-  } else if (subtle > 0.2) {
-    accent.color.lerp(new THREE.Color(0x3a8aaa), 0.02 * subtle);
+  if (close > 0.08 || past > 0.3) {
+    accent.color.lerp(new THREE.Color(0x5de5ff), 0.04 * Math.max(close, past));
+  } else if (subtle > 0.15) {
+    accent.color.lerp(new THREE.Color(0x3a8aaa), 0.018 * subtle);
   } else {
     accent.color.lerp(new THREE.Color(0xf28c28), 0.025);
   }
