@@ -1289,19 +1289,19 @@ const detector = detectorFace;
 function placeDetector() {
   const t = THREE.MathUtils.clamp(DETECTOR_DISTANCE / RACE_DISTANCE, 0, 0.999);
   const f = frameAt(t);
-  // Low on the far column end — horizon anchor under the race corridor (not a portal disc)
-  const p = worldAt(DETECTOR_DISTANCE, 0, -0.35);
-  p.addScaledVector(f.trueUp, -0.55);
+  // Low on the far column end — horizon anchor under Vita's sightline (not a portal disc)
+  const p = worldAt(DETECTOR_DISTANCE, 0, 0.15);
+  p.addScaledVector(f.trueUp, -0.25);
   detectorGroup.position.copy(p);
   // Face toward oncoming racers (against race tangent)
   detectorGroup.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), f.tangent.clone().negate());
-  detectorHousing.position.set(0, 0.35, 0);
-  detectorFace.position.set(0, 0.55, 1.45);
-  detectorHaloSprite.position.set(0, 0.55, 1.3);
-  detectorCore.position.set(0, 0.4, 1.3);
-  detectorHaloMesh.position.set(0, 0.4, 1.15);
-  detectorGlow.position.set(0, 0.55, 1.8);
-  detectorFill.position.set(0, 0.3, 1.0);
+  detectorHousing.position.set(0, 0.25, 0);
+  detectorFace.position.set(0, 0.45, 1.45);
+  detectorHaloSprite.position.set(0, 0.45, 1.3);
+  detectorCore.position.set(0, 0.3, 1.3);
+  detectorHaloMesh.position.set(0, 0.3, 1.15);
+  detectorGlow.position.set(0, 0.45, 1.8);
+  detectorFill.position.set(0, 0.2, 1.0);
 }
 
 /** Purely visual UV/Vis approach staging — does not alter race logic. */
