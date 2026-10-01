@@ -444,18 +444,18 @@ scene.add(detectorGroup);
 
 const texLoader = new THREE.TextureLoader();
 
-// Column shell — wall substrate behind packed silica (not neon tunnel)
+// Column shell — wall substrate behind packed silica (not neon tunnel / not road)
 mats.columnWall = new THREE.MeshBasicMaterial({
-  color: 0x3d2f5c,
+  color: 0x2e2648,
   transparent: true,
-  opacity: 0.9,
+  opacity: 0.88,
   side: THREE.BackSide,
   depthWrite: false,
 });
 mats.columnInnerContour = new THREE.MeshBasicMaterial({
-  color: 0x6a5290,
+  color: 0x5a4680,
   transparent: true,
-  opacity: 0.18,
+  opacity: 0.16,
   side: THREE.BackSide,
   depthWrite: false,
 });
@@ -677,8 +677,9 @@ function buildSilicaField() {
   const particleScale = () => 1.05 + rnd() * 0.55;
 
   // Full-track coverage: denser visual via overlap/scale, not front-loaded counts.
-  const step = Math.max(1.55, 1.85 / Math.max(0.55, mul));
-  const elevSlots = 9;
+  // Target ~24–30k instances at high quality (InstancedMesh batches).
+  const step = Math.max(1.9, 2.25 / Math.max(0.55, mul));
+  const elevSlots = 8;
   for (let d0 = 2; d0 < RACE_DISTANCE - 4; d0 += step) {
     const wave = 0.5 + 0.5 * Math.sin(d0 * 0.07) * Math.cos(d0 * 0.026);
     const density = 0.9 + 0.1 * wave;
@@ -736,11 +737,11 @@ function buildSilicaField() {
   }
 
   // Far dust on walls
-  const farStep = Math.max(2.2, 2.6 / Math.max(0.55, mul));
+  const farStep = Math.max(2.6, 3.1 / Math.max(0.55, mul));
   for (let d0 = 3; d0 < RACE_DISTANCE - 5; d0 += farStep) {
     for (const sideSign of [-1, 1]) {
-      for (let n = 0; n < 3; n++) {
-        if (rnd() > 0.8) continue;
+      for (let n = 0; n < 2; n++) {
+        if (rnd() > 0.78) continue;
         const p = sampleWallPacked(sideSign, 9.35, 10.1, (rnd() - 0.5) * 1.5);
         queue(
           rnd() > 0.5 ? 'particleSmall' : 'particleMedium',
@@ -753,11 +754,11 @@ function buildSilicaField() {
   }
 
   // Ceiling/floor shoulders near L/R walls — enclose the tube without closing corridor
-  const stitchStep = Math.max(1.7, 2.0 / Math.max(0.55, mul));
+  const stitchStep = Math.max(2.1, 2.5 / Math.max(0.55, mul));
   for (let d0 = 2; d0 < RACE_DISTANCE - 4; d0 += stitchStep) {
     for (const upSign of [-1, 1]) {
-      for (let n = 0; n < 4; n++) {
-        if (rnd() > 0.88) continue;
+      for (let n = 0; n < 3; n++) {
+        if (rnd() > 0.84) continue;
         const r = 9.35 + rnd() * 0.7;
         // Bias toward side walls; allow higher |lift| so packed bed wraps toward ceiling/floor
         let lateral = (rnd() > 0.5 ? 1 : -1) * (GAME_CONFIG.laneWidth * 2.0 + rnd() * 4.2);
@@ -813,8 +814,8 @@ function buildSilicaField() {
   } else {
     flowGroup.visible = true;
     infraGroup.visible = true;
-    mats.columnWall.opacity = 0.9;
-    if (mats.columnInnerContour) mats.columnInnerContour.opacity = 0.18;
+    mats.columnWall.opacity = 0.88;
+    if (mats.columnInnerContour) mats.columnInnerContour.opacity = 0.16;
   }
 }
 
