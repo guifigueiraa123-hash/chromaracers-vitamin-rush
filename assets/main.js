@@ -448,7 +448,7 @@ const DEBUG_COLUMN = false;
  * Dev-only detector focus mode.
  * When true: hide silica/flow/molecules/unrelated decor; show column + detector clearly.
  */
-const DEBUG_DETECTOR = true;
+const DEBUG_DETECTOR = false;
 
 /** UV/Vis detector mount distance along the race (finish = 1500). Near end of sector 9. */
 const DETECTOR_DISTANCE = 1480;
@@ -1323,17 +1323,17 @@ function updateDetectorApproach(dist) {
   const past = toDet < 0 ? THREE.MathUtils.clamp(1 - absTo / 25, 0.55, 1) : 0;
 
   // Distant: small bright cyan-white core; close: compact scientific instrument
-  const coreScale = 0.32 + far * 0.22 + subtle * 0.18 + bright * 0.28 + close * 0.2 + past * 0.15;
-  detectorCore.scale.set(coreScale, coreScale, coreScale * 0.55);
-  mats.detectorCore.opacity = 0.55 + far * 0.2 + subtle * 0.15 + bright * 0.15 + past * 0.1;
+  const coreScale = 0.4 + far * 0.28 + subtle * 0.2 + bright * 0.25 + close * 0.18 + past * 0.12;
+  detectorCore.scale.set(coreScale, coreScale, coreScale * 0.5);
+  mats.detectorCore.opacity = 0.65 + far * 0.2 + subtle * 0.12 + bright * 0.1 + past * 0.08;
 
-  const haloS = 0.7 + far * 0.35 + subtle * 0.3 + clear * 0.4 + bright * 0.25;
-  detectorHaloMesh.scale.set(haloS, haloS, haloS * 0.45);
-  mats.detectorHalo.opacity = 0.06 + far * 0.08 + subtle * 0.1 + clear * 0.08 + bright * 0.05;
+  const haloS = 0.85 + far * 0.4 + subtle * 0.35 + clear * 0.35 + bright * 0.2;
+  detectorHaloMesh.scale.set(haloS, haloS, haloS * 0.4);
+  mats.detectorHalo.opacity = 0.08 + far * 0.1 + subtle * 0.1 + clear * 0.07 + bright * 0.04;
   // Soft halo sprite — restrained; avoid giant portal disc
-  const spriteS = 1.0 + far * 0.7 + subtle * 0.55 + clear * 0.7 + bright * 0.35;
+  const spriteS = 1.15 + far * 0.8 + subtle * 0.5 + clear * 0.55 + bright * 0.25;
   detectorHaloSprite.scale.set(spriteS, spriteS, 1);
-  detectorHaloSprite.material.opacity = 0.1 + far * 0.1 + subtle * 0.12 + clear * 0.1;
+  detectorHaloSprite.material.opacity = 0.12 + far * 0.12 + subtle * 0.1 + clear * 0.08;
 
   // Housing fades in at medium range; fully readable <30 m
   const houseScale = 0.48 + clear * 0.42 + close * 0.35 + past * 0.2;
