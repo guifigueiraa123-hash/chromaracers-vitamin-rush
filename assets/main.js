@@ -20,8 +20,8 @@ const GAME_CONFIG = {
     baseFov: 62,
     boostFov: 71,
   },
-  // Phase A (env 3.2): wide HPLC shell — Vita small vs column (closer to concept art)
-  // Progression: 10.4 → 12.25 → 15.0 → 18.0 (~73% over original)
+  // Phase A: continuous HPLC column radius (pre-3.2 was 10.4; +15–20% ≈ 12.0–12.5).
+  // Held at 18.0 so the shell matches docs/environment/references scale vs Vita.
   columnRadius: 18.0,
   leaderboardKey: 'chromaracers_vitamin_rush_lb_v1',
   maxLeaderboard: 10,
@@ -2275,7 +2275,7 @@ window.CHROMARACERS = {
   GAME_CONFIG, RACE_DISTANCE, SECTORS, state, Storage, rivals, vita, spriteActors,
   DEBUG_SILICA, DEBUG_COLUMN, DEBUG_FLOW, DEBUG_MOLECULES, DEBUG_DETECTOR, DETECTOR_DISTANCE,
   columnRadius: GAME_CONFIG.columnRadius,
-  silicaStats, silicaGroup, envGroup, detectorGroup,
+  silicaStats, silicaGroup, flowGroup, envGroup, detectorGroup, infraGroup,
   snapCameraToPlayer, applyEnvironmentDebugVisibility, applyDebugColumnGameplayHide,
   placeDetector, updateDetectorApproach,
 };
