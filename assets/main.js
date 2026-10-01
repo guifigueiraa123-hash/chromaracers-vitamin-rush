@@ -670,11 +670,11 @@ function buildSilicaField() {
   };
 
   const clusterScale = (key) => {
-    if (key === 'clusterLarge') return 2.95 + rnd() * 0.7;
-    if (key === 'clusterMedium') return 2.45 + rnd() * 0.55;
-    return 1.95 + rnd() * 0.45;
+    if (key === 'clusterLarge') return 3.15 + rnd() * 0.75;
+    if (key === 'clusterMedium') return 2.6 + rnd() * 0.6;
+    return 2.05 + rnd() * 0.5;
   };
-  const particleScale = () => 1.05 + rnd() * 0.55;
+  const particleScale = () => 1.15 + rnd() * 0.55;
 
   // Full-track coverage: denser visual via overlap/scale, not front-loaded counts.
   // Target ~24–30k instances at high quality (InstancedMesh batches).
@@ -721,9 +721,9 @@ function buildSilicaField() {
       }
 
       // Local dense patches along wall
-      if (rnd() < 0.55 * density) {
+      if (rnd() < 0.45 * density) {
         const elev0 = (rnd() - 0.5) * 1.1;
-        for (let k = 0; k < 3; k++) {
+        for (let k = 0; k < 2; k++) {
           const p = sampleWallPacked(sideSign, 9.15, 10.08, elev0 + (rnd() - 0.5) * 0.28);
           if (rnd() < 0.65) {
             const key = pickClusterKey();
