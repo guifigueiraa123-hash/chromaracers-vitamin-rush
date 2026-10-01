@@ -20,8 +20,9 @@ const GAME_CONFIG = {
     baseFov: 62,
     boostFov: 71,
   },
-  // Phase A (env 3.2): ~18% larger than prior 10.4 — more microscopic column presence
-  columnRadius: 12.25,
+  // Phase A (env 3.2): larger HPLC shell so Vita reads small vs column (ref ~10% height)
+  // Was 10.4 → 12.25; now 15.0 (~44% over original) for reference-scale circumference
+  columnRadius: 15.0,
   leaderboardKey: 'chromaracers_vitamin_rush_lb_v1',
   maxLeaderboard: 10,
   character: 'Vita C',
