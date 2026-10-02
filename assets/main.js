@@ -985,7 +985,7 @@ function buildPerforatedArch(radius, tubeRadius, floorLift, metalMat, glowMat) {
   group.name = 'columnFramePerforated';
   const radial = qualityState.mode === 'low' ? 5 : 8;
   const holeCount = 5 + Math.floor(rnd() * 4); // 5–8
-  const baseHalf = 0.032 + rnd() * 0.018;
+  const baseHalf = 0.045 + rnd() * 0.025; // larger voids so cutouts read at PIX=3
   const holes = [];
   for (let i = 0; i < holeCount; i++) {
     let t = (i + 0.5) / holeCount + (rnd() - 0.5) * 0.035;
@@ -1079,6 +1079,11 @@ function buildColumnStructure() {
   for (let i = 0; i < frameCount; i++) {
     perforated[i] = rnd() < 0.28;
     if (!perforated[i]) solidCount += 1;
+  }
+  // Guarantee one near-camera perforated arch for readable cutouts
+  if (![1, 2, 3, 4].some((i) => perforated[i])) {
+    if (!perforated[2]) solidCount -= 1;
+    perforated[2] = true;
   }
   if (solidCount === 0) {
     perforated[0] = false;
