@@ -36,6 +36,9 @@ const GAME_CONFIG = {
   character: 'Vita C',
 };
 
+/** Lift column center above the race spline so the pista sits in the lower tube. */
+const COLUMN_LIFT = 4.2;
+
 const RACE_DISTANCE = GAME_CONFIG.raceDistance;
 
 /** Sector templates as fractions of raceDistance (designed for 1500 m). */
@@ -965,7 +968,9 @@ function buildColumnStructure() {
   const frameThick = GAME_CONFIG.frameThickness || 0.36;
   const beamThick = GAME_CONFIG.longitudinalBeamThickness || 0.26;
   const lowerThick = GAME_CONFIG.lowerBeamThickness || 0.34;
-  const floorLift = GAME_CONFIG.lowerBeamHeight ?? -1.25;
+  // Pista lift in world; arch local floor is relative to lifted column center
+  const pistaLift = GAME_CONFIG.lowerBeamHeight ?? -1.25;
+  const floorLift = pistaLift - COLUMN_LIFT;
   const lowMul = qualityState.mode === 'low' ? 0.65 : 1;
   const frameCount = Math.max(12, Math.floor((length / spacing) * lowMul));
 
@@ -987,7 +992,8 @@ function buildColumnStructure() {
   for (let i = 0; i < frameCount; i++) {
     const d = startD + (i / Math.max(1, frameCount - 1)) * (endD - startD);
     const f = frameAt(THREE.MathUtils.clamp(d / RACE_DISTANCE, 0, 0.999));
-    dummy.position.copy(f.p);
+    // Equivalent to ring.position.copy(f.p).addScaledVector(f.trueUp, COLUMN_LIFT)
+    dummy.position.copy(f.p).addScaledVector(f.trueUp, COLUMN_LIFT);
     dummy.quaternion.setFromRotationMatrix(columnFrameBasis(f, basis));
     dummy.scale.set(1, 1, 1);
     dummy.updateMatrix();
@@ -997,7 +1003,6 @@ function buildColumnStructure() {
   structure.add(frames);
 
   // --- Ceiling longitudinal beams only (skip crown center + all side/lower lines) ---
-  // Keep the two near-top horizontals; remove middle ceiling line and wall beams.
   const ceilingUs = [0.38, 0.62];
   const beamSegs = qualityState.mode === 'low' ? 100 : 180;
   for (let bi = 0; bi < ceilingUs.length; bi++) {
@@ -1011,6 +1016,7 @@ function buildColumnStructure() {
       const f = frameAt(t);
       pts.push(
         f.p.clone()
+          .addScaledVector(f.trueUp, COLUMN_LIFT)
           .addScaledVector(f.side, localX)
           .addScaledVector(f.trueUp, localY)
       );
@@ -1034,7 +1040,7 @@ function buildColumnStructure() {
       pts.push(
         f.p.clone()
           .addScaledVector(f.side, sideSign * corridorHalf)
-          .addScaledVector(f.trueUp, floorLift)
+          .addScaledVector(f.trueUp, pistaLift)
       );
     }
     const railCurve = new THREE.CatmullRomCurve3(pts, false, 'catmullrom', 0.12);
@@ -1084,7 +1090,7 @@ function buildColumnSectionRings(wallRadius) {
     core.renderOrder = 1;
 
     ring.add(bulk, core);
-    ring.position.copy(f.p);
+    ring.position.copy(f.p).addScaledVector(f.trueUp, COLUMN_LIFT);
     ring.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), f.tangent);
     envGroup.add(ring);
   }
@@ -1418,11 +1424,56 @@ function buildEnvironment() {
   clearGroup(silicaGroup);
   clearGroup(infraGroup);
   seed = 1337;
-  // Etapa 3.2.1 — physical containment armature only (no silica / particles).
   buildColumnStructure();
 
-  // Etapa 3.2.2 will fill Region B (between frames) with stationary-phase beads.
-  // Intentionally omitted here so the steel-blue geometry can be judged alone.
+  // Continuous BackSide wall — column shell behind the silica bed
+  const wallPts = [];
+  for (let i = 0; i <= 200; i++) {
+    const f = frameAt(i / 200);
+    wallPts.push(f.p.clone().addScaledVector(f.trueUp, COLUMN_LIFT));
+  }
+  const wallMesh = new THREE.Mesh(
+    new THREE.TubeGeometry(new THREE.CatmullRomCurve3(wallPts), 400, GAME_CONFIG.columnRadius + 1.6, 20, false),
+    new THREE.MeshBasicMaterial({ color: 0x1b2a5e, side: THREE.BackSide })
+  );
+  wallMesh.name = 'columnWall';
+  wallMesh.renderOrder = -3;
+  envGroup.add(wallMesh);
+
+  // Dense silica beads in the lifted column cylinder
+  if (!DEBUG_COLUMN && !DEBUG_DETECTOR) {
+    const palette = [0x8f5cf0, 0xa57bff, 0x7a4de0, 0xb0acd0, 0x9a96bd].map((c) => new THREE.Color(c));
+    const beadCount = Math.floor(2500 * qualityState.particleMul);
+    const beads = new THREE.InstancedMesh(
+      geo.sphereM,
+      // No vertexColors — that flag expects a geometry color attr and was zeroing output.
+      // instanceColor alone drives the palette; fog:false keeps MeshBasic readable.
+      new THREE.MeshBasicMaterial({ flatShading: true, fog: false }),
+      beadCount
+    );
+    beads.name = 'silicaBeads';
+    beads.frustumCulled = false;
+    const m4 = new THREE.Matrix4();
+    const q = new THREE.Quaternion();
+    const sc = new THREE.Vector3();
+    for (let i = 0; i < beadCount; i++) {
+      const d = 10 + rnd() * (RACE_DISTANCE - 20);
+      const f = frameAt(d / RACE_DISTANCE);
+      const a = rnd() * Math.PI * 2;
+      const r = GAME_CONFIG.columnRadius - 0.3 - rnd() * 1.4;
+      const p = f.p.clone()
+        .addScaledVector(f.trueUp, COLUMN_LIFT)
+        .addScaledVector(f.side, Math.cos(a) * r)
+        .addScaledVector(f.trueUp, Math.sin(a) * r);
+      const s = 0.3 + Math.pow(rnd(), 2.5) * 1.1;
+      m4.compose(p, q, sc.set(s, s, s));
+      beads.setMatrixAt(i, m4);
+      beads.setColorAt(i, palette[Math.floor(rnd() * palette.length)]);
+    }
+    beads.instanceMatrix.needsUpdate = true;
+    beads.instanceColor.needsUpdate = true;
+    envGroup.add(beads);
+  }
 
   // Skip futuristic infra clutter — armature carries structure
   if (!DEBUG_COLUMN && !DEBUG_DETECTOR && !DEBUG_SILICA && !VISUAL_PHASE1_COMPOSITION) {
@@ -1720,8 +1771,7 @@ function updateColumnAtmosphere(dt, boosting) {
   const turbulent = sector?.name === 'TURBULÊNCIA';
   const turbPulse = turbulent ? 1 + Math.sin(state.elapsed * 5.5) * 0.12 : 1;
 
-  // Etapa 3.2.1: keep fog light enough that successive arches read in perspective
-  scene.fog.density = (sector?.fog ?? 0.009) * 1.15 * (boosting ? 0.85 : 1);
+  scene.fog.density = (sector?.fog ?? 0.009) * 1.5 * (boosting ? 0.85 : 1);
   scene.background.lerp(new THREE.Color(profile.tint), 0.04);
   columnFill.intensity = 0.28 + profile.flow * 0.12 + (boosting ? 0.18 : 0) + (turbulent ? 0.1 : 0);
 
@@ -2613,10 +2663,12 @@ window.CHROMARACERS = {
   DEBUG_SILICA, DEBUG_COLUMN, DEBUG_FLOW, DEBUG_MOLECULES, DEBUG_DETECTOR, DETECTOR_DISTANCE,
   VISUAL_PHASE1_COMPOSITION,
   columnRadius: GAME_CONFIG.columnRadius,
+  COLUMN_LIFT,
   silicaStats, silicaGroup, flowGroup, envGroup, detectorGroup, infraGroup,
   snapCameraToPlayer, applyEnvironmentDebugVisibility, applyDebugColumnGameplayHide,
   placeDetector, updateDetectorApproach,
   hasColumnWall: () => !!envGroup.getObjectByName('columnWall'),
   hasColumnFrames: () => !!envGroup.getObjectByName('columnFrames'),
   columnFrameCount: () => envGroup.getObjectByName('columnFrames')?.count ?? 0,
+  silicaBeadCount: () => envGroup.getObjectByName('silicaBeads')?.count ?? 0,
 };
