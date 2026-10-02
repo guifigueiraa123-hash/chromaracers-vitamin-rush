@@ -14,13 +14,15 @@ const GAME_CONFIG = {
   boostDuration: 2.4,
   rivalBaseSpeeds: [38, 40, 41.5],
   camera: {
-    back: 7.2,
-    height: 3.55,
-    lookAhead: 14,
-    baseFov: 62,
-    boostFov: 71,
+    // Visual-target Phase 1: behind + slightly above; Vita in lower-middle frame
+    back: 8.4,
+    height: 4.35,
+    lookAhead: 16,
+    baseFov: 64,
+    boostFov: 72,
   },
-  columnRadius: 10.4,
+  // Narrower HPLC tunnel for denser packed-bed read
+  columnRadius: 7.5,
   leaderboardKey: 'chromaracers_vitamin_rush_lb_v1',
   maxLeaderboard: 10,
   character: 'Vita C',
@@ -311,8 +313,9 @@ function applyQuality(mode, fpsHint = 60) {
 // Three.js scene bootstrap
 const mount = $('game');
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x0d1530);
-scene.fog = new THREE.FogExp2(0x0d1530, 0.0085);
+scene.background = new THREE.Color(0x0c1834);
+// Minimal scene fog — wall uses fog:false (FogExp2 on the tube created ring banding)
+scene.fog = new THREE.FogExp2(0x0c1834, 0.0007);
 
 const camera = new THREE.PerspectiveCamera(
   GAME_CONFIG.camera.baseFov,
@@ -335,8 +338,16 @@ try {
   document.body.appendChild(box);
   throw err;
 }
-renderer.setPixelRatio(Math.min(devicePixelRatio, qualityState.pixelRatioCap));
-renderer.setSize(innerWidth, innerHeight);
+const PIX = 3; // 2 = fino, 4 = bem retrô
+function applyRenderSize() {
+  renderer.setPixelRatio(1);
+  renderer.setSize(Math.ceil(innerWidth / PIX), Math.ceil(innerHeight / PIX), false);
+  const c = renderer.domElement;
+  c.style.width = '100%';
+  c.style.height = '100%';
+  c.style.imageRendering = 'pixelated';
+}
+applyRenderSize();
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 mount.appendChild(renderer.domElement);
 
@@ -347,7 +358,7 @@ keyLight.position.set(3, 8, 2);
 scene.add(keyLight);
 const accent = new THREE.PointLight(0xf28c28, 0.45, 42, 2);
 scene.add(accent);
-const columnFill = new THREE.PointLight(0x6a8cff, 0.35, 55, 2);
+const columnFill = new THREE.PointLight(0x3a5a8a, 0.32, 55, 2);
 scene.add(columnFill);
 
 const clock = new THREE.Clock();
@@ -399,13 +410,9 @@ const geo = {
 };
 
 const mats = {
-  silicaNear: new THREE.MeshBasicMaterial({ color: 0xb8a0e8 }),
-  silicaMid: new THREE.MeshBasicMaterial({ color: 0x7a6bc4 }),
-  silicaFar: new THREE.MeshBasicMaterial({ color: 0x4a3a8a }),
-  silicaHi: new THREE.MeshBasicMaterial({ color: 0xe8e0ff }),
   flowPixel: new THREE.MeshBasicMaterial({ color: 0x5de5ff, transparent: true, opacity: 0.85 }),
   flowSoft: new THREE.MeshBasicMaterial({
-    color: 0x3ecfff, transparent: true, opacity: 0.045, depthWrite: false, blending: THREE.AdditiveBlending,
+    color: 0x3a5a88, transparent: true, opacity: 0.028, depthWrite: false, blending: THREE.AdditiveBlending,
   }),
   moleculeAmb: [
     new THREE.MeshBasicMaterial({ color: 0xf28c28 }),
@@ -423,17 +430,55 @@ const mats = {
   obstacleInterf: new THREE.MeshBasicMaterial({ color: 0xd9368a }),
   infra: new THREE.MeshBasicMaterial({ color: 0x243a62 }),
   infraAccent: new THREE.MeshBasicMaterial({ color: 0x3a6ea8 }),
-  detectorBody: new THREE.MeshBasicMaterial({ color: 0x1c2e4d }),
+  detectorBody: new THREE.MeshBasicMaterial({ color: 0x152848 }),
+  detectorHousingDark: new THREE.MeshBasicMaterial({ color: 0x0d1530 }),
   detectorAccent: new THREE.MeshBasicMaterial({ color: 0x5de5ff }),
+  detectorAmber: new THREE.MeshBasicMaterial({ color: 0xf2a33a }),
   detectorUv: new THREE.MeshBasicMaterial({
-    color: 0xc9a0ff, transparent: true, opacity: 0.55, blending: THREE.AdditiveBlending, depthWrite: false,
+    color: 0x5de5ff, transparent: true, opacity: 0.7, blending: THREE.AdditiveBlending, depthWrite: false, fog: false,
+  }),
+  detectorCore: new THREE.MeshBasicMaterial({
+    color: 0xe8f8ff, transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending, depthWrite: false, fog: false,
+  }),
+  detectorHalo: new THREE.MeshBasicMaterial({
+    color: 0x5de5ff, transparent: true, opacity: 0.22, blending: THREE.AdditiveBlending, depthWrite: false, fog: false,
   }),
 };
 
 // ---------------------------------------------------------------------------
 // ColumnEnvironment — chromatographic column following the race spline
+/** Dev-only: denser silica visibility; hide some non-silica env when true. Not exposed in UI. */
+const DEBUG_SILICA = false;
+/**
+ * Dev-only column architecture mode.
+ * When true: show ONLY column shell + corridor + player (no silica/flow/molecules/decor).
+ * Not exposed in player-facing UI.
+ */
+/**
+ * Visual-target Phase 1 — structural composition only
+ * (column + rings + stationary walls + mobile floor + detector + player).
+ * Defers decorative particle polish / infra clutter.
+ */
+const VISUAL_PHASE1_COMPOSITION = true;
+/** Dev-only shell isolation. Off for visual-target composition. */
+const DEBUG_COLUMN = false;
+/** Dev-only: emphasize mobile-phase flow (Phase D). Default off. */
+const DEBUG_FLOW = false;
+/** Dev-only: emphasize molecular traffic (Phase E). Default off. */
+const DEBUG_MOLECULES = false;
+/**
+ * Dev-only detector focus mode.
+ * When true: hide silica/flow/molecules/unrelated decor; show column + detector clearly.
+ */
+const DEBUG_DETECTOR = false;
+
+/** UV/Vis detector mount distance along the race (finish = 1500). Near end of sector 9. */
+const DETECTOR_DISTANCE = 1480;
+
 const envGroup = new THREE.Group();
 scene.add(envGroup);
+const silicaGroup = new THREE.Group();
+scene.add(silicaGroup);
 const flowGroup = new THREE.Group();
 scene.add(flowGroup);
 const infraGroup = new THREE.Group();
@@ -442,18 +487,189 @@ const detectorGroup = new THREE.Group();
 scene.add(detectorGroup);
 
 const texLoader = new THREE.TextureLoader();
-const silicaTex = texLoader.load('./assets/silica-back.png');
-silicaTex.colorSpace = THREE.SRGBColorSpace;
-silicaTex.wrapS = silicaTex.wrapT = THREE.RepeatWrapping;
-silicaTex.repeat.set(6, 3);
 
+/**
+ * Phase A.1 — continuous HPLC glass inner-wall texture.
+ * TubeGeometry UV: U = along path, V = around circumference.
+ * Canvas X → U, canvas Y → V.
+ * Longitudinal details must be HORIZONTAL (constant V). Vertical strokes = rings.
+ */
+function createColumnWallTexture() {
+  const c = document.createElement('canvas');
+  c.width = 1024;
+  c.height = 512;
+  const ctx = c.getContext('2d');
+
+  // Circumferential curvature shading (varies with V / canvas Y only)
+  const radial = ctx.createLinearGradient(0, 0, 0, 512);
+  radial.addColorStop(0.0, '#0a1428');
+  radial.addColorStop(0.16, '#101c3a');
+  radial.addColorStop(0.34, '#152848');
+  radial.addColorStop(0.50, '#183a67');
+  radial.addColorStop(0.66, '#152848');
+  radial.addColorStop(0.84, '#101c3a');
+  radial.addColorStop(1.0, '#0a1428');
+  ctx.fillStyle = radial;
+  ctx.fillRect(0, 0, 1024, 512);
+
+  // Soft glass body — circumferential only (no U banding)
+  const body = ctx.createLinearGradient(0, 80, 0, 432);
+  body.addColorStop(0, 'rgba(24,58,103,0)');
+  body.addColorStop(0.4, 'rgba(40,80,140,0.16)');
+  body.addColorStop(0.5, 'rgba(48,92,155,0.12)');
+  body.addColorStop(0.6, 'rgba(40,80,140,0.16)');
+  body.addColorStop(1, 'rgba(24,58,103,0)');
+  ctx.fillStyle = body;
+  ctx.fillRect(0, 80, 1024, 352);
+
+  // Very restrained longitudinal glass catch (constant V → along spline). Avoid starburst density.
+  for (const y of [128, 160, 352, 384]) {
+    ctx.fillStyle = 'rgba(180,200,230,0.035)';
+    ctx.fillRect(0, y, 1024, 1);
+  }
+  // Soft structural seam pair (mid-side walls)
+  for (const y of [148, 364]) {
+    ctx.fillStyle = 'rgba(24,58,103,0.12)';
+    ctx.fillRect(0, y, 1024, 1);
+  }
+
+  // Peripheral curvature darken (ceiling / floor in V)
+  const edgeTop = ctx.createLinearGradient(0, 0, 0, 64);
+  edgeTop.addColorStop(0, 'rgba(8,12,24,0.45)');
+  edgeTop.addColorStop(1, 'rgba(8,12,24,0)');
+  ctx.fillStyle = edgeTop;
+  ctx.fillRect(0, 0, 1024, 64);
+  const edgeBot = ctx.createLinearGradient(0, 448, 0, 512);
+  edgeBot.addColorStop(0, 'rgba(8,12,24,0)');
+  edgeBot.addColorStop(1, 'rgba(8,12,24,0.4)');
+  ctx.fillStyle = edgeBot;
+  ctx.fillRect(0, 448, 1024, 64);
+
+  // Soft micro grain — avoid aligned constant-U streaks
+  for (let i = 0; i < 160; i++) {
+    ctx.fillStyle = `rgba(20,40,80,${0.04 + Math.random() * 0.06})`;
+    ctx.fillRect(Math.random() * 1024, Math.random() * 512, 1 + Math.random(), 1);
+  }
+
+  // Alpha: upper arc (canvas Y near 0) more transparent — glass ceiling read
+  const img = ctx.getImageData(0, 0, 1024, 512);
+  const data = img.data;
+  for (let py = 0; py < 512; py++) {
+    const yN = py / 511;
+    // Ceiling band transparent → mid sides solid → floor slightly open
+    let a = 255;
+    if (yN < 0.28) a = Math.floor(55 + (yN / 0.28) * 200);
+    else if (yN > 0.82) a = Math.floor(200 + ((1 - yN) / 0.18) * 55);
+    for (let px = 0; px < 1024; px++) data[(py * 1024 + px) * 4 + 3] = a;
+  }
+  ctx.putImageData(img, 0, 0);
+
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  // No U-repeat seams (those become transverse rings looking down the tube)
+  tex.wrapS = THREE.ClampToEdgeWrapping;
+  tex.wrapT = THREE.ClampToEdgeWrapping;
+  tex.repeat.set(1, 1);
+  tex.magFilter = THREE.LinearFilter;
+  tex.minFilter = THREE.LinearFilter;
+  tex.generateMipmaps = false;
+  return tex;
+}
+
+const COLUMN_WALL_TEX = createColumnWallTexture();
+
+/** Mobile-phase race surface — blue/cyan flow language (visual target palette). */
+function createMobilePhaseTexture() {
+  const c = document.createElement('canvas');
+  c.width = 512;
+  c.height = 256;
+  const ctx = c.getContext('2d');
+  const g = ctx.createLinearGradient(0, 0, 0, 256);
+  g.addColorStop(0, '#0050A8');
+  g.addColorStop(0.35, '#0066CC');
+  g.addColorStop(0.55, '#00AEEF');
+  g.addColorStop(0.75, '#0066CC');
+  g.addColorStop(1, '#0050A8');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, 512, 256);
+  // Longitudinal flow streaks (U along path when mapped on ribbon)
+  for (let i = 0; i < 28; i++) {
+    const y = (i / 28) * 256 + (Math.random() - 0.5) * 6;
+    ctx.fillStyle = `rgba(25,217,255,${0.08 + Math.random() * 0.14})`;
+    ctx.fillRect(0, y, 512, 1 + Math.random() * 2);
+  }
+  for (let i = 0; i < 12; i++) {
+    const x = Math.random() * 512;
+    ctx.fillStyle = `rgba(111,234,255,${0.06 + Math.random() * 0.1})`;
+    ctx.fillRect(x, 0, 2 + Math.random() * 4, 256);
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.ClampToEdgeWrapping;
+  tex.repeat.set(14, 1);
+  tex.magFilter = THREE.LinearFilter;
+  tex.minFilter = THREE.LinearMipmapLinearFilter;
+  return tex;
+}
+const MOBILE_PHASE_TEX = createMobilePhaseTexture();
+
+// Continuous HPLC glass — fog OFF; alpha enables transparent upper wall
 mats.columnWall = new THREE.MeshBasicMaterial({
-  map: silicaTex,
-  color: 0x6a5aaa,
+  map: COLUMN_WALL_TEX,
+  color: 0xffffff,
+  side: THREE.BackSide,
+  transparent: true,
+  opacity: 1,
+  depthWrite: true,
+  fog: false,
+});
+mats.mobilePhase = new THREE.MeshBasicMaterial({
+  map: MOBILE_PHASE_TEX,
+  color: 0xffffff,
+  transparent: true,
+  opacity: 0.9,
+  side: THREE.DoubleSide,
+  depthWrite: true,
+  fog: false,
+});
+mats.columnSeam = new THREE.MeshBasicMaterial({
+  color: 0x1a3f70,
+  transparent: true,
+  opacity: 0.1,
+  depthWrite: false,
+  fog: false,
+});
+mats.columnClamp = new THREE.MeshBasicMaterial({
+  color: 0x152848,
   transparent: true,
   opacity: 0.28,
-  side: THREE.BackSide,
   depthWrite: false,
+  fog: false,
+});
+mats.columnClampAccent = new THREE.MeshBasicMaterial({
+  color: 0x183a67,
+  transparent: true,
+  opacity: 0.22,
+  depthWrite: false,
+  fog: false,
+});
+/** Thick section rings — structural blue, heavier than the thin wall membrane. */
+mats.columnSectionRing = new THREE.MeshBasicMaterial({
+  color: 0x2a6aa8,
+  transparent: true,
+  opacity: 0.92,
+  side: THREE.DoubleSide,
+  depthWrite: true,
+  fog: false,
+});
+mats.columnSectionRingCore = new THREE.MeshBasicMaterial({
+  color: 0x183a67,
+  transparent: true,
+  opacity: 0.7,
+  side: THREE.DoubleSide,
+  depthWrite: false,
+  fog: false,
 });
 
 let seed = 1337;
@@ -466,6 +682,9 @@ function disposeObject3D(obj) {
   obj.traverse((child) => {
     if (child.geometry && !Object.values(geo).includes(child.geometry)) {
       child.geometry.dispose?.();
+    }
+    if (child.userData?.disposeMaterial && child.material) {
+      child.material.dispose?.();
     }
   });
 }
@@ -481,104 +700,487 @@ function clearGroup(group) {
 /** Sector visual density multipliers (organic along 1500 m). */
 function columnVisualProfile(distance) {
   const t = distance / RACE_DISTANCE;
-  if (t < 0.2) return { silica: 0.75, flow: 0.7, mol: 0.45, fog: 0.0078, tint: 0x0d1b36 };
-  if (t < 0.4) return { silica: 1.15, flow: 0.85, mol: 0.7, fog: 0.009, tint: 0x151a3a };
-  if (t < 0.6) return { silica: 1.0, flow: 1.0, mol: 1.2, fog: 0.0095, tint: 0x1a1540 };
-  if (t < 0.8) return { silica: 0.95, flow: 1.25, mol: 1.1, fog: 0.01, tint: 0x12284a };
-  if (t < 0.967) return { silica: 0.85, flow: 1.45, mol: 0.9, fog: 0.0082, tint: 0x0e3058 };
-  return { silica: 0.7, flow: 1.1, mol: 0.55, fog: 0.0065, tint: 0x1a4068 };
+  // Phase A.1: navy-only tints (no bright portal horizon). Scene fog stays minimal.
+  if (t < 0.2) return { silica: 0.75, flow: 0.7, mol: 0.45, fog: 0.0007, tint: 0x0c1834 };
+  if (t < 0.4) return { silica: 1.15, flow: 0.85, mol: 0.7, fog: 0.0008, tint: 0x0c1834 };
+  if (t < 0.6) return { silica: 1.0, flow: 1.0, mol: 1.2, fog: 0.0008, tint: 0x0e1a36 };
+  if (t < 0.8) return { silica: 0.95, flow: 1.25, mol: 1.1, fog: 0.0008, tint: 0x0c1834 };
+  if (t < 0.967) return { silica: 0.85, flow: 1.1, mol: 0.7, fog: 0.0007, tint: 0x0a1428 };
+  return { silica: 0.6, flow: 0.85, mol: 0.35, fog: 0.0006, tint: 0x0a1228 };
 }
 
 const flowParticles = [];
 const ambientMolecules = [];
 
-function makeInstancedSilica(material, count, radiusMin, radiusMax, scaleMin, scaleMax) {
-  const mesh = new THREE.InstancedMesh(geo.pixel, material, count);
-  mesh.instanceMatrix.setUsage(THREE.StaticDrawUsage);
-  const dummy = new THREE.Object3D();
-  for (let i = 0; i < count; i++) {
-    const d = 8 + rnd() * (RACE_DISTANCE - 16);
-    const f = frameAt(d / RACE_DISTANCE);
-    // Prefer wall bands (avoid blocking center track)
-    const angle = (rnd() * Math.PI * 1.55) + Math.PI * 0.2;
-    const radius = radiusMin + rnd() * (radiusMax - radiusMin);
-    const p = f.p.clone()
-      .addScaledVector(f.side, Math.cos(angle) * radius)
-      .addScaledVector(f.trueUp, Math.sin(angle) * radius * 0.92);
-    dummy.position.copy(p);
-    dummy.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), f.tangent);
-    const s = scaleMin + rnd() * (scaleMax - scaleMin);
-    dummy.scale.set(s * (0.7 + rnd() * 0.6), s * (0.55 + rnd() * 0.7), s * (0.7 + rnd() * 0.6));
-    dummy.updateMatrix();
-    mesh.setMatrixAt(i, dummy.matrix);
-  }
-  mesh.instanceMatrix.needsUpdate = true;
-  mesh.frustumCulled = true;
-  return mesh;
+/** Approved stationary-phase sprites — NearestFilter preserves 16-bit crispness. */
+function loadSilicaTexture(url) {
+  const tex = texLoader.load(url);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.magFilter = THREE.NearestFilter;
+  tex.minFilter = THREE.NearestFilter;
+  tex.generateMipmaps = false;
+  return tex;
 }
 
+const SILICA_TEX = {
+  particleSmall: loadSilicaTexture('./assets/environment/silica/silica-particle-small.png'),
+  particleMedium: loadSilicaTexture('./assets/environment/silica/silica-particle-medium.png'),
+  particleLarge: loadSilicaTexture('./assets/environment/silica/silica-particle-large.png'),
+  clusterSmall: loadSilicaTexture('./assets/environment/silica/silica-cluster-small.png'),
+  clusterMedium: loadSilicaTexture('./assets/environment/silica/silica-cluster-medium.png'),
+  clusterLarge: loadSilicaTexture('./assets/environment/silica/silica-cluster-large.png'),
+};
+
+// Packed-bed materials — white base; per-instance purple/violet/lavender tints
+const SILICA_MATS = {
+  particleSmall: new THREE.MeshBasicMaterial({
+    map: SILICA_TEX.particleSmall, color: 0xffffff, transparent: true, alphaTest: 0.28,
+    depthWrite: true, side: THREE.DoubleSide,
+  }),
+  particleMedium: new THREE.MeshBasicMaterial({
+    map: SILICA_TEX.particleMedium, color: 0xffffff, transparent: true, alphaTest: 0.28,
+    depthWrite: true, side: THREE.DoubleSide,
+  }),
+  particleLarge: new THREE.MeshBasicMaterial({
+    map: SILICA_TEX.particleLarge, color: 0xffffff, transparent: true, alphaTest: 0.28,
+    depthWrite: true, side: THREE.DoubleSide,
+  }),
+  clusterSmall: new THREE.MeshBasicMaterial({
+    map: SILICA_TEX.clusterSmall, color: 0xffffff, transparent: true, alphaTest: 0.28,
+    depthWrite: true, side: THREE.DoubleSide,
+  }),
+  clusterMedium: new THREE.MeshBasicMaterial({
+    map: SILICA_TEX.clusterMedium, color: 0xffffff, transparent: true, alphaTest: 0.28,
+    depthWrite: true, side: THREE.DoubleSide,
+  }),
+  clusterLarge: new THREE.MeshBasicMaterial({
+    map: SILICA_TEX.clusterLarge, color: 0xffffff, transparent: true, alphaTest: 0.28,
+    depthWrite: true, side: THREE.DoubleSide,
+  }),
+};
+
+/** Non-neon packed-bed tints — readable on navy wall, not neon. */
+const SILICA_TINTS = [
+  { color: new THREE.Color(0x3a1868), weight: 0.18 }, // dark violet
+  { color: new THREE.Color(0x5120a8), weight: 0.26 }, // deep purple
+  { color: new THREE.Color(0x6a38c0), weight: 0.24 }, // purple
+  { color: new THREE.Color(0x7a58b8), weight: 0.18 }, // blue-violet
+  { color: new THREE.Color(0x9a82d0), weight: 0.14 }, // muted lavender
+];
+
+function pickSilicaTint() {
+  let r = rnd();
+  for (const t of SILICA_TINTS) {
+    r -= t.weight;
+    if (r <= 0) return t.color;
+  }
+  return SILICA_TINTS[0].color;
+}
+
+/** Shared plane for wall-mounted packing (faces column axis, not camera). */
+const silicaPlaneGeo = new THREE.PlaneGeometry(1, 1);
+
+/** Runtime counts exposed for reports / debug. */
+const silicaStats = { particles: 0, clusters: 0, instances: 0, clusterLarge: 0 };
+
+/** Instanced wall packing — one mesh per approved silica material. */
+const silicaLayers = {
+  clusterLarge: { mat: SILICA_MATS.clusterLarge, mesh: null, count: 0, kind: 'cluster' },
+  clusterMedium: { mat: SILICA_MATS.clusterMedium, mesh: null, count: 0, kind: 'cluster' },
+  clusterSmall: { mat: SILICA_MATS.clusterSmall, mesh: null, count: 0, kind: 'cluster' },
+  particleLarge: { mat: SILICA_MATS.particleLarge, mesh: null, count: 0, kind: 'particle' },
+  particleMedium: { mat: SILICA_MATS.particleMedium, mesh: null, count: 0, kind: 'particle' },
+  particleSmall: { mat: SILICA_MATS.particleSmall, mesh: null, count: 0, kind: 'particle' },
+};
+const silicaDummy = new THREE.Object3D();
+const _silicaTint = new THREE.Color();
+
+/**
+ * Dense packed-bed sample in L/R annular sectors of the cylinder.
+ * Thick bed from near the track corridor out to the wall (not a thin skin at R).
+ * angle 0 = +side (right), π/2 = ceiling. Mobile-phase corridor kept clear.
+ */
+function samplePackedBed(sideSign) {
+  const R = GAME_CONFIG.columnRadius;
+  // Tight clear channel so L/R beds flank the blue track like the reference
+  const corridorR = GAME_CONFIG.laneWidth * 2.35;
+  const roll = rnd();
+  // Angular elevation from horizon — side masses + upper-lateral cylinder fill
+  let elev;
+  if (roll < 0.48) elev = -0.1 + rnd() * 0.75;       // mid sides (main mass)
+  else if (roll < 0.78) elev = 0.45 + rnd() * 0.8;    // upper-lateral
+  else elev = -0.55 + rnd() * 0.35;                  // lower wall above floor
+  elev = THREE.MathUtils.clamp(elev, -0.7, 1.35);
+
+  const angle = sideSign > 0 ? elev : Math.PI - elev;
+  // Thick annular bed from near track out to wall (solid packed mass)
+  const bedRoll = rnd();
+  let radial;
+  if (bedRoll < 0.40) radial = R - (0.04 + rnd() * 1.2); // outer crust
+  else if (bedRoll < 0.82) radial = corridorR + 1.1 + rnd() * (R - corridorR - 1.8); // bulk fill
+  else radial = corridorR + 0.7 + rnd() * 1.3; // inner face of bed (near track)
+
+  let lateral = Math.cos(angle) * radial;
+  let lift = Math.sin(angle) * radial;
+
+  // Keep mobile-phase track clear — but beds hug the sides closely
+  const corridorHalf = GAME_CONFIG.laneWidth * 2.25;
+  if (Math.abs(lateral) < corridorHalf) {
+    lateral = sideSign * (corridorHalf + 0.55 + rnd() * 1.1);
+    const hyp = Math.hypot(lateral, lift) || 1;
+    const targetR = Math.max(radial, corridorHalf + 2.4);
+    lateral = (lateral / hyp) * targetR;
+    lift = (lift / hyp) * targetR;
+  }
+  // Never sit on the floor ribbon
+  if (lift < -R * 0.42) lift = -R * 0.22 + rnd() * 0.4;
+
+  return { lateral, lift, radial, angle };
+}
+
+/** Legacy helper kept for any residual callers — routes to packed-bed sampler. */
+function sampleWallPacked(sideSign, rMin, rMax, elev = 0) {
+  const p = samplePackedBed(sideSign);
+  return { lateral: p.lateral, lift: p.lift, r: p.radial };
+}
+
+/**
+ * Place one inward-facing packing instance on a silica layer.
+ * Faces the column axis so it reads as packed bed, not floating debris.
+ */
+function placeSilicaInstance(layerKey, distance, lateral, lift, scale, tint) {
+  const layer = silicaLayers[layerKey];
+  const cap = layer?.mesh?.userData?.capacity ?? 0;
+  if (!layer || !layer.mesh || layer.count >= cap) return false;
+  const f = frameAt(THREE.MathUtils.clamp(distance / RACE_DISTANCE, 0, 0.999));
+  const s = scale * (0.94 + rnd() * 0.1);
+  const idx = layer.count;
+  silicaDummy.position.copy(f.p)
+    .addScaledVector(f.side, lateral)
+    .addScaledVector(f.trueUp, lift);
+  silicaDummy.scale.set(s, s, 1);
+  silicaDummy.lookAt(f.p);
+  silicaDummy.rotateZ((rnd() - 0.5) * 0.45);
+  silicaDummy.updateMatrix();
+  layer.mesh.setMatrixAt(idx, silicaDummy.matrix);
+  if (tint && layer.mesh.instanceColor) {
+    _silicaTint.copy(tint);
+    layer.mesh.setColorAt(idx, _silicaTint);
+  }
+  layer.count += 1;
+  if (layer.kind === 'cluster') {
+    silicaStats.clusters += 1;
+    if (layerKey === 'clusterLarge') silicaStats.clusterLarge += 1;
+  } else {
+    silicaStats.particles += 1;
+  }
+  silicaStats.instances += 1;
+  return true;
+}
+
+/** Clusters: small/medium common; large very rare accent. */
+function pickClusterKey() {
+  const r = rnd();
+  if (r < 0.035) return 'clusterLarge';
+  if (r < 0.42) return 'clusterMedium';
+  return 'clusterSmall';
+}
+
+function pickParticleKey(preferSmall = false) {
+  const r = rnd();
+  if (preferSmall) {
+    if (r < 0.55) return 'particleSmall';
+    if (r < 0.88) return 'particleMedium';
+    return 'particleLarge';
+  }
+  if (r < 0.22) return 'particleLarge';
+  if (r < 0.7) return 'particleMedium';
+  return 'particleSmall';
+}
+
+/**
+ * Phase A.1 — continuous TubeGeometry inner wall + thick section rings.
+ * Wall stays a continuous glass membrane; concentric rings delimit SECTORS.
+ */
 function buildColumnStructure() {
-  // Continuous inner column following the race spline (NOT portal rings / NOT road)
-  const tubularSegments = Math.floor(280 * (qualityState.mode === 'low' ? 0.55 : 1));
-  const radial = qualityState.mode === 'low' ? 12 : 18;
-  const innerGeo = new THREE.TubeGeometry(curve, tubularSegments, GAME_CONFIG.columnRadius, radial, false);
-  envGroup.add(new THREE.Mesh(innerGeo, mats.columnWall));
+  const tubularSegments = Math.floor(520 * (qualityState.mode === 'low' ? 0.55 : 1));
+  const radial = qualityState.mode === 'low' ? 36 : 64;
+  const R = GAME_CONFIG.columnRadius;
 
-  const outerGeo = new THREE.TubeGeometry(curve, Math.floor(tubularSegments * 0.55), GAME_CONFIG.columnRadius + 0.85, 10, false);
-  mats.columnOuter = new THREE.MeshBasicMaterial({
-    color: 0x0c1830,
-    transparent: true,
-    opacity: 0.22,
-    side: THREE.FrontSide,
-    depthWrite: false,
-  });
-  envGroup.add(new THREE.Mesh(outerGeo, mats.columnOuter));
+  // Single continuous inner wall — opaque BackSide; player is inside the HPLC column
+  const innerGeo = new THREE.TubeGeometry(curve, tubularSegments, R, radial, false);
+  const wallMesh = new THREE.Mesh(innerGeo, mats.columnWall);
+  wallMesh.name = 'columnWall';
+  wallMesh.renderOrder = -2;
+  envGroup.add(wallMesh);
 
-  // Diffuse solvent volume under the race path — single soft sheath, never three road ribbons
-  const bedPts = [];
-  for (let i = 0; i <= 100; i++) bedPts.push(worldAt((i / 100) * RACE_DISTANCE, 0, -0.2));
-  const bedCurve = new THREE.CatmullRomCurve3(bedPts, false, 'catmullrom', 0.2);
-  envGroup.add(new THREE.Mesh(
-    new THREE.TubeGeometry(bedCurve, 140, 3.4, 8, false),
-    new THREE.MeshBasicMaterial({
-      color: 0x163a58,
-      transparent: true,
-      opacity: 0.09,
-      depthWrite: false,
-      blending: THREE.AdditiveBlending,
-    })
-  ));
+  // Thick concentric arcs at sector boundaries — heavier than the thin wall
+  buildColumnSectionRings(R);
 }
 
-function buildSilicaField() {
-  const mul = qualityState.particleMul;
-  // 3 depth layers + highlight grit — packing beads on the column wall
-  envGroup.add(makeInstancedSilica(mats.silicaNear, Math.floor(120 * mul), 7.0, 8.4, 0.32, 0.62));
-  envGroup.add(makeInstancedSilica(mats.silicaMid, Math.floor(200 * mul), 8.2, 9.6, 0.18, 0.36));
-  envGroup.add(makeInstancedSilica(mats.silicaFar, Math.floor(320 * mul), 9.4, 11.0, 0.07, 0.16));
-  envGroup.add(makeInstancedSilica(mats.silicaHi, Math.floor(55 * mul), 7.4, 10.0, 0.09, 0.2));
-
-  // Occasional denser packing clusters (still wall-bound, not cave rocks)
-  const clusterCount = Math.floor(28 * mul);
-  const clusters = new THREE.InstancedMesh(geo.crystal, mats.silicaMid, clusterCount);
-  clusters.instanceMatrix.setUsage(THREE.StaticDrawUsage);
-  const dummy = new THREE.Object3D();
-  for (let i = 0; i < clusterCount; i++) {
-    const d = 20 + rnd() * (RACE_DISTANCE - 40);
-    const f = frameAt(d / RACE_DISTANCE);
-    const angle = (rnd() * Math.PI * 1.4) + Math.PI * 0.25;
-    const radius = 7.4 + rnd() * 1.6;
-    dummy.position.copy(f.p)
-      .addScaledVector(f.side, Math.cos(angle) * radius)
-      .addScaledVector(f.trueUp, Math.sin(angle) * radius * 0.9);
-    dummy.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), f.tangent);
-    const s = 0.35 + rnd() * 0.45;
-    dummy.scale.set(s, s * (0.7 + rnd() * 0.5), s);
-    dummy.updateMatrix();
-    clusters.setMatrixAt(i, dummy.matrix);
+/**
+ * Concentric section rings along the spline.
+ * Tube thickness >> wall membrane so they clearly delimit column sections.
+ * Fully inset so the bulk reads inside the opaque BackSide wall.
+ */
+function buildColumnSectionRings(wallRadius) {
+  // Sector boundaries (+ mid-sector markers so sections read clearly in-camera)
+  const distances = [];
+  for (let i = 0; i < SECTORS.length; i++) {
+    const s = SECTORS[i];
+    if (i > 0) distances.push(s.start); // boundary
+    const mid = (s.start + s.end) * 0.5;
+    if (mid > 40 && mid < RACE_DISTANCE - 40) distances.push(mid);
   }
-  clusters.instanceMatrix.needsUpdate = true;
-  envGroup.add(clusters);
+  distances.sort((a, b) => a - b);
+
+  // Thick torus fully inside the cylinder (wall is a thin membrane at R)
+  const tubeR = qualityState.mode === 'low' ? 1.05 : 1.35;
+  const majorR = wallRadius - tubeR * 0.85; // keep outer edge ~inside the wall
+
+  for (let i = 0; i < distances.length; i++) {
+    const d = distances[i];
+    if (d < 40 || d > RACE_DISTANCE - 30) continue;
+    const f = frameAt(THREE.MathUtils.clamp(d / RACE_DISTANCE, 0, 0.999));
+    const isBoundary = SECTORS.some((s, idx) => idx > 0 && Math.abs(s.start - d) < 0.5);
+    const bulkTube = isBoundary ? tubeR : tubeR * 0.72;
+
+    const ring = new THREE.Group();
+    ring.name = 'columnSectionRing';
+
+    const bulkGeo = new THREE.TorusGeometry(majorR, bulkTube, 16, 64);
+    const bulk = new THREE.Mesh(bulkGeo, mats.columnSectionRing);
+    bulk.renderOrder = 1;
+
+    const coreGeo = new THREE.TorusGeometry(majorR - bulkTube * 0.12, bulkTube * 0.45, 12, 48);
+    const core = new THREE.Mesh(coreGeo, mats.columnSectionRingCore);
+    core.renderOrder = 1;
+
+    ring.add(bulk, core);
+    ring.position.copy(f.p);
+    // Torus default plane is XY; align so ring is perpendicular to path tangent
+    ring.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), f.tangent);
+    envGroup.add(ring);
+  }
+}
+
+/** Thin longitudinal glass seams — L/R only, very subtle (no crosshair, no rings). */
+function buildColumnSeams(tubularSegments, radius) {
+  const angles = [-1.12, 1.12]; // left/right walls only
+  const seamSegs = Math.floor(tubularSegments * 0.7);
+  for (let ai = 0; ai < angles.length; ai++) {
+    const ang = angles[ai];
+    const pts = [];
+    for (let i = 0; i <= seamSegs; i++) {
+      const t = i / seamSegs;
+      const f = frameAt(THREE.MathUtils.clamp(t, 0, 0.999));
+      const p = f.p.clone()
+        .addScaledVector(f.side, Math.cos(ang) * radius)
+        .addScaledVector(f.trueUp, Math.sin(ang) * radius);
+      pts.push(p);
+    }
+    const seamCurve = new THREE.CatmullRomCurve3(pts, false, 'catmullrom', 0.15);
+    const seamGeo = new THREE.TubeGeometry(seamCurve, seamSegs, 0.012, 3, false);
+    const seam = new THREE.Mesh(seamGeo, mats.columnSeam);
+    seam.renderOrder = -1;
+    envGroup.add(seam);
+  }
+}
+
+/**
+ * Sparse longitudinal wall fittings — technical glass segments, not transverse rings.
+ */
+function buildColumnClamps(radius) {
+  const count = qualityState.mode === 'low' ? 4 : 6;
+  for (let i = 0; i < count; i++) {
+    const d = 180 + i * ((RACE_DISTANCE - 360) / Math.max(1, count - 1));
+    if (d > DETECTOR_DISTANCE - 60) continue;
+    const f = frameAt(THREE.MathUtils.clamp(d / RACE_DISTANCE, 0, 0.999));
+    const sideSign = i % 2 === 0 ? 1 : -1;
+    const elev = (i % 3 === 0 ? 0.22 : i % 3 === 1 ? -0.18 : 0.05);
+
+    const clamp = new THREE.Group();
+    const plate = new THREE.Mesh(geo.pixel, mats.columnClamp);
+    plate.scale.set(0.35, 1.35, 0.12); // elongated along wall, not a ring
+    const tip = new THREE.Mesh(geo.pixel, mats.columnClampAccent);
+    tip.scale.set(0.12, 0.9, 0.1);
+    tip.position.x = 0.18;
+    clamp.add(plate, tip);
+
+    clamp.position.copy(f.p)
+      .addScaledVector(f.side, sideSign * radius * 0.94)
+      .addScaledVector(f.trueUp, elev * radius);
+    clamp.lookAt(f.p);
+    envGroup.add(clamp);
+  }
+}
+
+/**
+ * Stationary-phase packing — mid-density wall bed (3.2.2B).
+ * Midpoint between empty floating debris (~few hundred visible as space rocks)
+ * and cave flood (~44k). Modest scales + wide corridor; silica frames the tube.
+ *
+ * Midpoint budget ~4k–5k modest sprites (~9× below cave ~44k).
+ * Brief “180–240 total” cannot hit ~15–25% player-camera frame coverage
+ * over 1500 m; composition follows the visual hierarchy targets instead.
+ */
+/**
+ * ETAPA 3.2.2 — dense chromatographic packed bed on L/R (+ upper-lateral) walls.
+ * Central mobile-phase corridor stays clear. Section rings remain visible (gaps).
+ * InstancedMesh only — no independent Mesh flood.
+ */
+function buildSilicaField() {
+  clearGroup(silicaGroup);
+  silicaStats.particles = 0;
+  silicaStats.clusters = 0;
+  silicaStats.instances = 0;
+  silicaStats.clusterLarge = 0;
+  Object.keys(silicaLayers).forEach((key) => {
+    silicaLayers[key].count = 0;
+    silicaLayers[key].mesh = null;
+  });
+
+  const mul = Math.min(1.15, qualityState.particleMul * (DEBUG_SILICA ? 1.2 : 1));
+  const debugScale = DEBUG_SILICA ? 1.06 : 1;
+  /** @type {{ key: string, distance: number, lateral: number, lift: number, scale: number, tint: THREE.Color }[]} */
+  const placements = [];
+  const queue = (key, distance, lateral, lift, scale) => {
+    placements.push({
+      key, distance, lateral, lift, scale,
+      tint: pickSilicaTint().clone(),
+    });
+  };
+
+  // Readable packed-bed scales at R=18 (compact beads, not sparse boulders)
+  const clusterScale = (key) => {
+    if (key === 'clusterLarge') return 1.55 + rnd() * 0.35;
+    if (key === 'clusterMedium') return 1.15 + rnd() * 0.28;
+    return 0.85 + rnd() * 0.25;
+  };
+  const particleScale = (size = 'medium') => {
+    if (size === 'small') return 0.48 + rnd() * 0.2;
+    if (size === 'large') return 0.85 + rnd() * 0.22;
+    return 0.62 + rnd() * 0.2;
+  };
+
+  // Leave metallic section rings readable
+  const ringGaps = [];
+  for (let i = 0; i < SECTORS.length; i++) {
+    const s = SECTORS[i];
+    if (i > 0) ringGaps.push(s.start);
+    const mid = (s.start + s.end) * 0.5;
+    if (mid > 40 && mid < RACE_DISTANCE - 40) ringGaps.push(mid);
+  }
+  const nearRingGap = (d) => ringGaps.some((rd) => Math.abs(rd - d) < 5.2);
+
+  // Dense cylindrical beds — L/R mass along full spline
+  const patchStep = Math.max(0.32, 0.38 / Math.max(0.55, mul));
+  outerPacked:
+  for (let d0 = 8; d0 < RACE_DISTANCE - 10; d0 += patchStep) {
+    if (nearRingGap(d0) && rnd() < 0.68) continue; // structural rings show through
+
+    for (const sideSign of [-1, 1]) {
+      const seeds = 5 + Math.floor(rnd() * 5); // 5–9 cluster seeds / side / patch
+      for (let s = 0; s < seeds; s++) {
+        if (placements.length > 28000) break outerPacked;
+        const base = samplePackedBed(sideSign);
+        const dd = d0 + (rnd() - 0.5) * patchStep * 0.95;
+
+        if (rnd() < 0.4) {
+          const key = pickClusterKey();
+          queue(key, dd, base.lateral, base.lift, clusterScale(key) * debugScale);
+        } else {
+          const pk = pickParticleKey(rnd() < 0.45);
+          const sz = pk === 'particleSmall' ? 'small' : pk === 'particleLarge' ? 'large' : 'medium';
+          queue(pk, dd, base.lateral, base.lift, particleScale(sz) * debugScale);
+        }
+
+        // Tight companions → compacted bed mass on the side
+        const companions = 8 + Math.floor(rnd() * 8); // 8–15
+        for (let c = 0; c < companions; c++) {
+          if (rnd() > 0.95) continue;
+          const p2 = samplePackedBed(sideSign);
+          const lateral = THREE.MathUtils.lerp(base.lateral, p2.lateral, 0.25 + rnd() * 0.4);
+          const lift = THREE.MathUtils.lerp(base.lift, p2.lift, 0.25 + rnd() * 0.4);
+          const d2 = dd + (rnd() - 0.5) * 0.85;
+          if (nearRingGap(d2) && rnd() < 0.5) continue;
+          if (rnd() < 0.32) {
+            const key = rnd() < 0.7 ? 'clusterSmall' : 'clusterMedium';
+            queue(key, d2, lateral, lift, clusterScale(key) * 0.92 * debugScale);
+          } else {
+            queue(
+              pickParticleKey(true),
+              d2, lateral, lift,
+              particleScale(rnd() < 0.55 ? 'small' : 'medium') * debugScale
+            );
+          }
+        }
+      }
+    }
+  }
+
+  // Background knit — tiny particles for packed-bed fill
+  const fillStep = Math.max(0.55, 0.65 / Math.max(0.55, mul));
+  for (let d0 = 10; d0 < RACE_DISTANCE - 14; d0 += fillStep) {
+    if (placements.length > 28000) break;
+    if (nearRingGap(d0) && rnd() < 0.6) continue;
+    for (const sideSign of [-1, 1]) {
+      const n = 3 + Math.floor(rnd() * 4);
+      for (let i = 0; i < n; i++) {
+        const p = samplePackedBed(sideSign);
+        queue(
+          pickParticleKey(true),
+          d0 + rnd() * fillStep * 0.6,
+          p.lateral, p.lift,
+          particleScale('small') * 0.95 * debugScale
+        );
+      }
+    }
+  }
+
+  // Soft budget — keep local cluster cohesion (no stride thinning)
+  const softMax = Math.floor(22000 * Math.min(1.1, mul));
+  if (placements.length > softMax) {
+    // Reservoir-sample random subset so dense companion groups survive
+    for (let i = placements.length - 1; i > 0; i--) {
+      const j = Math.floor(rnd() * (i + 1));
+      const tmp = placements[i];
+      placements[i] = placements[j];
+      placements[j] = tmp;
+    }
+    placements.length = softMax;
+  }
+
+  const counts = {
+    clusterLarge: 0, clusterMedium: 0, clusterSmall: 0,
+    particleLarge: 0, particleMedium: 0, particleSmall: 0,
+  };
+  placements.forEach((p) => { counts[p.key] += 1; });
+  Object.keys(silicaLayers).forEach((key) => {
+    const n = Math.max(1, counts[key] || 0);
+    const mesh = new THREE.InstancedMesh(silicaPlaneGeo, silicaLayers[key].mat, n);
+    mesh.instanceMatrix.setUsage(THREE.StaticDrawUsage);
+    mesh.frustumCulled = false;
+    mesh.renderOrder = 0;
+    mesh.userData.capacity = n;
+    // Enable per-instance color variation
+    mesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(n * 3), 3);
+    silicaLayers[key].mesh = mesh;
+    silicaLayers[key].count = 0;
+    silicaGroup.add(mesh);
+  });
+  placements.forEach((p) => {
+    placeSilicaInstance(p.key, p.distance, p.lateral, p.lift, p.scale, p.tint);
+  });
+  Object.keys(silicaLayers).forEach((key) => {
+    const layer = silicaLayers[key];
+    if (!layer.mesh) return;
+    layer.mesh.count = layer.count;
+    layer.mesh.instanceMatrix.needsUpdate = true;
+    if (layer.mesh.instanceColor) layer.mesh.instanceColor.needsUpdate = true;
+  });
+
+  applyEnvironmentDebugVisibility();
 }
 
 function buildInfrastructure() {
@@ -629,66 +1231,199 @@ function buildInfrastructure() {
   }
 }
 
+/**
+ * Apply DEBUG_COLUMN / DEBUG_DETECTOR / DEBUG_SILICA visibility.
+ * DEBUG_COLUMN: shell + player only.
+ * DEBUG_DETECTOR: shell + detector (+ player); hide silica/flow/molecules/decor.
+ */
+function applyEnvironmentDebugVisibility() {
+  if (DEBUG_COLUMN) {
+    silicaGroup.visible = false;
+    flowGroup.visible = false;
+    infraGroup.visible = false;
+    detectorGroup.visible = false;
+    ambientMolecules.forEach((m) => { if (m.mesh) m.mesh.visible = false; });
+    if (mats.columnSeam) mats.columnSeam.opacity = 0.14;
+    return;
+  }
+
+  if (DEBUG_DETECTOR) {
+    silicaGroup.visible = false;
+    flowGroup.visible = false;
+    infraGroup.visible = false;
+    detectorGroup.visible = true;
+    ambientMolecules.forEach((m) => { if (m.mesh) m.mesh.visible = false; });
+    if (mats.columnSeam) mats.columnSeam.opacity = 0.12;
+    return;
+  }
+
+  silicaGroup.visible = true;
+  flowGroup.visible = !DEBUG_SILICA;
+  infraGroup.visible = !DEBUG_SILICA && !VISUAL_PHASE1_COMPOSITION;
+  detectorGroup.visible = true;
+  ambientMolecules.forEach((m) => {
+    if (m.mesh) m.mesh.visible = !VISUAL_PHASE1_COMPOSITION;
+  });
+  if (mats.columnSeam) mats.columnSeam.opacity = 0.12;
+
+  if (DEBUG_SILICA) {
+    flowGroup.visible = false;
+    infraGroup.visible = false;
+  }
+}
+
+/** Hide gameplay clutter for DEBUG_COLUMN / DEBUG_DETECTOR / Phase 1 composition shots. */
+function applyDebugColumnGameplayHide() {
+  if (!DEBUG_COLUMN && !DEBUG_DETECTOR && !VISUAL_PHASE1_COMPOSITION) return;
+  obstacles.forEach((o) => { if (o.g) o.g.visible = false; });
+  pickups.forEach((p) => { if (p.g) p.g.visible = false; });
+  rivals.forEach((r) => {
+    if (r.actor) {
+      r.actor.sprite.visible = false;
+      r.actor.label.visible = false;
+    } else if (r.g) {
+      r.g.visible = false;
+    }
+  });
+}
+
 function buildEnvironment() {
   clearGroup(envGroup);
+  clearGroup(silicaGroup);
   clearGroup(infraGroup);
   seed = 1337;
   buildColumnStructure();
-  buildSilicaField();
-  buildInfrastructure();
+
+  // Dense purple/gray silica beads — 1 InstancedMesh draw call
+  if (!DEBUG_COLUMN && !DEBUG_DETECTOR) {
+    const palette = [0x6d3fd6, 0x8a5ae8, 0x5b34b8, 0x8a86a8, 0xa9a4c8].map((c) => new THREE.Color(c));
+    const beadCount = Math.floor(1800 * qualityState.particleMul);
+    const beads = new THREE.InstancedMesh(
+      geo.sphereM,
+      new THREE.MeshStandardMaterial({
+        roughness: 0.8,
+        flatShading: true,
+        emissive: 0x1a1040,
+        emissiveIntensity: 0.3,
+        vertexColors: true,
+      }),
+      beadCount
+    );
+    beads.name = 'silicaBeads';
+    beads.frustumCulled = false;
+    const m4 = new THREE.Matrix4();
+    const q = new THREE.Quaternion();
+    const sc = new THREE.Vector3();
+    for (let i = 0; i < beadCount; i++) {
+      const d = 10 + rnd() * (RACE_DISTANCE - 20);
+      const f = frameAt(d / RACE_DISTANCE);
+      const a = rnd() * Math.PI * 2;
+      const r = GAME_CONFIG.columnRadius - 0.3 - rnd() * 1.4;
+      const p = f.p.clone()
+        .addScaledVector(f.side, Math.cos(a) * r)
+        .addScaledVector(f.trueUp, Math.sin(a) * r);
+      const s = 0.3 + Math.pow(rnd(), 2.5) * 1.5; // muitas pequenas, poucas gigantes
+      m4.compose(p, q, sc.set(s, s, s));
+      beads.setMatrixAt(i, m4);
+      beads.setColorAt(i, palette[Math.floor(rnd() * palette.length)]);
+    }
+    beads.instanceMatrix.needsUpdate = true;
+    if (beads.instanceColor) beads.instanceColor.needsUpdate = true;
+    envGroup.add(beads);
+  }
+
+  // Phase 1: skip futuristic infra clutter — rings + shell carry structure
+  if (!DEBUG_COLUMN && !DEBUG_DETECTOR && !DEBUG_SILICA && !VISUAL_PHASE1_COMPOSITION) {
+    buildInfrastructure();
+  }
+  applyEnvironmentDebugVisibility();
+}
+
+/**
+ * Visual-target Phase 1 — continuous blue/cyan mobile-phase race surface.
+ * Ribbon follows the spline just below the gameplay path (lanes unchanged).
+ */
+function buildMobilePhaseFloor() {
+  const segments = qualityState.mode === 'low' ? 160 : 260;
+  const halfW = GAME_CONFIG.laneWidth * 2.35; // ~3–5 character widths
+  const lift = -1.35; // just under Vita racing line
+  const positions = [];
+  const normals = [];
+  const uvs = [];
+  const indices = [];
+  const _n = new THREE.Vector3();
+
+  for (let i = 0; i <= segments; i++) {
+    const t = Math.min(0.999, i / segments);
+    const f = frameAt(t);
+    const center = f.p.clone().addScaledVector(f.trueUp, lift);
+    const left = center.clone().addScaledVector(f.side, -halfW);
+    const right = center.clone().addScaledVector(f.side, halfW);
+    positions.push(left.x, left.y, left.z, right.x, right.y, right.z);
+    _n.copy(f.trueUp);
+    normals.push(_n.x, _n.y, _n.z, _n.x, _n.y, _n.z);
+    const u = (i / segments) * 14;
+    uvs.push(u, 0, u, 1);
+    if (i < segments) {
+      const a = i * 2;
+      indices.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
+    }
+  }
+
+  const geoFloor = new THREE.BufferGeometry();
+  geoFloor.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geoFloor.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
+  geoFloor.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+  geoFloor.setIndex(indices);
+  geoFloor.computeBoundingSphere();
+
+  const floor = new THREE.Mesh(geoFloor, mats.mobilePhase);
+  floor.name = 'mobilePhaseFloor';
+  floor.renderOrder = -1;
+  flowGroup.add(floor);
 }
 
 function buildFlowChannels() {
   clearGroup(flowGroup);
-  // No solid road ribbons. Sparse scientific lane ticks + soft solvent mist only.
-  const tickCount = Math.floor(90 * qualityState.particleMul);
+  // Structural mobile-phase floor (Phase 1 composition)
+  buildMobilePhaseFloor();
+
+  // Decorative motes deferred in Phase 1 — keep gameplay path readable
+  if (VISUAL_PHASE1_COMPOSITION) return;
+
+  const tickCount = Math.floor(18 * qualityState.particleMul);
   const ticks = new THREE.InstancedMesh(geo.pixel, mats.flowSoft, tickCount);
   ticks.instanceMatrix.setUsage(THREE.StaticDrawUsage);
   const dummy = new THREE.Object3D();
   let ti = 0;
   for (let i = 0; i < tickCount; i++) {
-    const lane = LANES[i % 3];
+    const lane = LANES[i % 3] * 0.35;
     const d = (i / tickCount) * RACE_DISTANCE;
     const f = frameAt(THREE.MathUtils.clamp(d / RACE_DISTANCE, 0, 0.999));
-    worldAt(d, lane, 0.05 + (i % 5) * 0.04, dummy.position);
+    worldAt(d, lane, 0.06 + (i % 5) * 0.04, dummy.position);
     dummy.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), f.tangent);
-    const s = 0.08 + (i % 3) * 0.03;
-    dummy.scale.set(s * 0.55, s * 0.55, s * 2.4);
+    const s = 0.03 + (i % 3) * 0.01;
+    dummy.scale.set(s * 0.35, s * 0.35, s * 0.9);
     dummy.updateMatrix();
     ticks.setMatrixAt(ti++, dummy.matrix);
   }
   ticks.count = ti;
   ticks.instanceMatrix.needsUpdate = true;
   flowGroup.add(ticks);
-
-  // One very soft central solvent sheath (reads as mobile phase volume, not a lane)
-  const pts = [];
-  const steps = 100;
-  for (let i = 0; i <= steps; i++) pts.push(worldAt((i / steps) * RACE_DISTANCE, 0, 0.35));
-  const c = new THREE.CatmullRomCurve3(pts, false, 'catmullrom', 0.2);
-  flowGroup.add(new THREE.Mesh(
-    new THREE.TubeGeometry(c, 140, 1.15, 6, false),
-    new THREE.MeshBasicMaterial({
-      color: 0x2ab8e0,
-      transparent: true,
-      opacity: 0.028,
-      depthWrite: false,
-      blending: THREE.AdditiveBlending,
-    })
-  ));
 }
 
 function spawnFlowParticles() {
   flowParticles.forEach((fp) => flowGroup.remove(fp.mesh));
   flowParticles.length = 0;
-  const count = Math.floor(180 * qualityState.particleMul);
+  // Phase 1: no decorative solvent motes — floor carries mobile-phase read
+  if (VISUAL_PHASE1_COMPOSITION) return;
+  const count = Math.floor(120 * qualityState.particleMul);
   for (let i = 0; i < count; i++) {
-    // Bias toward the three gameplay lanes without drawing road lines
-    const laneBias = LANES[i % 3] + (rnd() - 0.5) * 0.55;
+    const laneBias = LANES[i % 3] + (rnd() - 0.5) * 0.7;
     const mesh = new THREE.Mesh(geo.pixel, mats.flowPixel.clone());
-    mesh.material.opacity = 0.3 + rnd() * 0.55;
-    const s = 0.035 + rnd() * 0.1;
-    mesh.scale.set(s, s, s * (1.8 + rnd() * 3.2));
+    mesh.material.opacity = 0.12 + rnd() * 0.28;
+    const s = 0.025 + rnd() * 0.07;
+    mesh.scale.set(s, s, s * (1.4 + rnd() * 2.4));
     flowGroup.add(mesh);
     flowParticles.push({
       mesh,
@@ -696,7 +1431,7 @@ function spawnFlowParticles() {
       offset: rnd() * RACE_DISTANCE,
       speed: 16 + rnd() * 26,
       wobble: rnd() * Math.PI * 2,
-      liftBase: 0.02 + rnd() * 0.85,
+      liftBase: 0.15 + rnd() * 1.1,
     });
   }
 }
@@ -704,6 +1439,8 @@ function spawnFlowParticles() {
 function spawnAmbientMolecules() {
   ambientMolecules.forEach((m) => scene.remove(m.mesh));
   ambientMolecules.length = 0;
+  // Phase 1 defers molecules / particle polish (Phase 4 in visual target)
+  if (VISUAL_PHASE1_COMPOSITION) return;
   const count = Math.floor(36 * qualityState.particleMul);
   for (let i = 0; i < count; i++) {
     const mat = mats.moleculeAmb[i % mats.moleculeAmb.length];
@@ -721,46 +1458,167 @@ function spawnAmbientMolecules() {
   }
 }
 
-// Detector UV/Vis — scientific housing + billboard face
+/**
+ * UV/Vis optical detector — scientific instrumentation at ~1450 m.
+ * Distant: small cyan-white core + soft halo.
+ * Close: compact housing + optical aperture (NOT a portal / finish gate).
+ */
 const detectorTex = texLoader.load('./assets/detector-uv-vis.png');
 detectorTex.colorSpace = THREE.SRGBColorSpace;
+detectorTex.magFilter = THREE.NearestFilter;
+detectorTex.minFilter = THREE.NearestFilter;
+
 const detectorFace = new THREE.Sprite(new THREE.SpriteMaterial({
-  map: detectorTex, transparent: true, depthWrite: false,
+  map: detectorTex, transparent: true, depthWrite: false, opacity: 0.85, fog: false,
 }));
-detectorFace.scale.set(10, 6.6, 1);
-detectorFace.renderOrder = 3;
+detectorFace.scale.set(4.2, 2.8, 1);
+detectorFace.renderOrder = 4;
+
+// Soft distant optical halo (sprite, not a giant ring mesh)
+const detectorHaloSprite = new THREE.Sprite(new THREE.SpriteMaterial({
+  color: 0x5de5ff,
+  transparent: true,
+  opacity: 0.35,
+  depthWrite: false,
+  fog: false,
+  blending: THREE.AdditiveBlending,
+}));
+detectorHaloSprite.scale.set(2.4, 2.4, 1);
+detectorHaloSprite.renderOrder = 3;
+
+const detectorCore = new THREE.Mesh(geo.sphereS, mats.detectorCore);
+detectorCore.scale.set(0.55, 0.55, 0.35);
+detectorCore.renderOrder = 5;
+
+const detectorHaloMesh = new THREE.Mesh(geo.sphereS, mats.detectorHalo);
+detectorHaloMesh.scale.set(1.35, 1.35, 0.7);
+detectorHaloMesh.renderOrder = 3;
 
 const detectorHousing = new THREE.Group();
 {
+  // Compact dark technical housing — lab instrument, not a gate
   const body = new THREE.Mesh(geo.pixel, mats.detectorBody);
-  body.scale.set(8.5, 6.2, 4.5);
-  const rim = new THREE.Mesh(geo.pixel, mats.detectorAccent);
-  rim.scale.set(9.2, 0.35, 5.0);
-  rim.position.y = 3.3;
+  body.scale.set(3.6, 3.2, 2.4);
+  const backplate = new THREE.Mesh(geo.pixel, mats.detectorHousingDark);
+  backplate.scale.set(4.2, 3.8, 0.35);
+  backplate.position.z = -1.35;
+  const bezel = new THREE.Mesh(geo.pixel, mats.detectorHousingDark);
+  bezel.scale.set(2.6, 2.6, 0.4);
+  bezel.position.z = 1.15;
   const aperture = new THREE.Mesh(geo.sphereS, mats.detectorUv);
-  aperture.scale.set(2.4, 2.4, 1.2);
-  aperture.position.z = 2.2;
+  aperture.scale.set(1.05, 1.05, 0.45);
+  aperture.position.z = 1.45;
+  const windowRing = new THREE.Mesh(geo.pixel, mats.detectorAccent);
+  windowRing.scale.set(2.2, 0.12, 0.12);
+  windowRing.position.set(0, 1.15, 1.35);
+  const amber = new THREE.Mesh(geo.pixel, mats.detectorAmber);
+  amber.scale.set(0.28, 0.28, 0.2);
+  amber.position.set(1.45, 1.35, 1.1);
   const sensorL = new THREE.Mesh(geo.pixel, mats.detectorAccent);
-  sensorL.scale.set(0.4, 0.8, 0.4);
-  sensorL.position.set(-3.2, 1.2, 2.4);
+  sensorL.scale.set(0.22, 0.55, 0.22);
+  sensorL.position.set(-1.55, 0.2, 1.25);
   const sensorR = sensorL.clone();
-  sensorR.position.x = 3.2;
-  detectorHousing.add(body, rim, aperture, sensorL, sensorR);
+  sensorR.position.x = 1.55;
+  const mount = new THREE.Mesh(geo.pixel, mats.detectorHousingDark);
+  mount.scale.set(0.45, 1.8, 0.45);
+  mount.position.set(0, -2.2, -0.2);
+  detectorHousing.add(body, backplate, bezel, aperture, windowRing, amber, sensorL, sensorR, mount);
+  detectorHousing.add(detectorCore, detectorHaloMesh);
 }
 
-detectorGroup.add(detectorHousing, detectorFace);
-const detectorGlow = new THREE.PointLight(0xb48cff, 1.2, 60, 2);
+detectorGroup.add(detectorHousing, detectorFace, detectorHaloSprite);
+const detectorGlow = new THREE.PointLight(0x5de5ff, 0.8, 45, 2);
 detectorGroup.add(detectorGlow);
+const detectorFill = new THREE.PointLight(0xe8f8ff, 0.25, 22, 2);
+detectorGroup.add(detectorFill);
 const detector = detectorFace;
 
 function placeDetector() {
-  const f = frameAt(0.994);
-  const p = worldAt(RACE_DISTANCE - 6, 0, 1.6);
+  const t = THREE.MathUtils.clamp(DETECTOR_DISTANCE / RACE_DISTANCE, 0, 0.999);
+  const f = frameAt(t);
+  // Low on the far column end — horizon anchor under Vita's sightline (not a portal disc)
+  const p = worldAt(DETECTOR_DISTANCE, 0, 0.15);
+  p.addScaledVector(f.trueUp, -0.25);
   detectorGroup.position.copy(p);
+  // Face toward oncoming racers (against race tangent)
   detectorGroup.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), f.tangent.clone().negate());
-  detectorFace.position.set(0, 1.2, 2.6);
-  detectorHousing.position.set(0, 0.4, 0);
-  detectorGlow.position.set(0, 1.5, 3);
+  detectorHousing.position.set(0, 0.25, 0);
+  detectorFace.position.set(0, 0.45, 1.45);
+  detectorHaloSprite.position.set(0, 0.45, 1.3);
+  detectorCore.position.set(0, 0.3, 1.3);
+  detectorHaloMesh.position.set(0, 0.3, 1.15);
+  detectorGlow.position.set(0, 0.45, 1.8);
+  detectorFill.position.set(0, 0.2, 1.0);
+}
+
+/** Purely visual UV/Vis approach staging — does not alter race logic. */
+function updateDetectorApproach(dist) {
+  const toDet = DETECTOR_DISTANCE - dist;
+  // Stay mounted through finish; distant speck from ~900 m out (not a portal).
+  // Phase 1: keep distant cyan destination always readable as vanishing-point anchor
+  const showDetector = (!DEBUG_COLUMN || DEBUG_DETECTOR)
+    && (DEBUG_DETECTOR || VISUAL_PHASE1_COMPOSITION || toDet < 900);
+  detectorGroup.visible = showDetector;
+  if (!showDetector) return;
+
+  // Stages: <250 subtle, <150 clear, <75 brighter, <30 housing readable
+  const absTo = Math.abs(toDet);
+  const far = THREE.MathUtils.clamp(1 - Math.max(0, toDet) / 900, 0, 1);
+  const subtle = THREE.MathUtils.clamp(1 - Math.max(0, toDet) / 250, 0, 1);
+  const clear = THREE.MathUtils.clamp(1 - Math.max(0, toDet) / 150, 0, 1);
+  const bright = THREE.MathUtils.clamp(1 - Math.max(0, toDet) / 75, 0, 1);
+  const close = THREE.MathUtils.clamp(1 - Math.max(0, toDet) / 30, 0, 1);
+  // Past the mount: keep instrument readable until finish
+  const past = toDet < 0 ? THREE.MathUtils.clamp(1 - absTo / 25, 0.55, 1) : 0;
+
+  // Distant: small bright cyan-white core; close: compact scientific instrument
+  const coreScale = 0.4 + far * 0.28 + subtle * 0.2 + bright * 0.25 + close * 0.18 + past * 0.12;
+  detectorCore.scale.set(coreScale, coreScale, coreScale * 0.5);
+  mats.detectorCore.opacity = 0.65 + far * 0.2 + subtle * 0.12 + bright * 0.1 + past * 0.08;
+
+  // Halo shrinks on approach — distant speck only; never a portal disc up close
+  const haloS = 0.9 + far * 0.45 + subtle * 0.25 + clear * 0.15 - close * 0.25;
+  detectorHaloMesh.scale.set(Math.max(0.4, haloS), Math.max(0.4, haloS), Math.max(0.25, haloS * 0.4));
+  mats.detectorHalo.opacity = 0.1 + far * 0.1 + subtle * 0.08 + clear * 0.04 - close * 0.04;
+  const spriteS = 1.2 + far * 0.75 + subtle * 0.35 + clear * 0.2 - close * 0.45;
+  detectorHaloSprite.scale.set(Math.max(0.6, spriteS), Math.max(0.6, spriteS), 1);
+  detectorHaloSprite.material.opacity = Math.max(0.04, 0.14 + far * 0.1 + subtle * 0.08 - close * 0.08);
+
+  // Housing fades in at medium range; fully readable <30 m
+  const houseScale = 0.48 + clear * 0.42 + close * 0.35 + past * 0.2;
+  detectorHousing.scale.setScalar(houseScale);
+  detectorHousing.visible = true;
+  // Dim housing body at long range so only the optical core reads far away
+  detectorHousing.traverse((child) => {
+    if (!child.isMesh || !child.material) return;
+    if (child === detectorCore || child === detectorHaloMesh) return;
+    if (child.material === mats.detectorUv || child.material === mats.detectorAmber) return;
+    if (child.material === mats.detectorBody || child.material === mats.detectorHousingDark
+        || child.material === mats.detectorAccent) {
+      // Shared mats — drive via group scale/visibility only
+    }
+  });
+
+  // Face sprite only near range — compact instrument panel, not a finish gate
+  detectorFace.visible = clear > 0.25 || past > 0.2;
+  detectorFace.material.opacity = 0.1 + clear * 0.45 + close * 0.3 + past * 0.25;
+  const faceS = 1.2 + clear * 0.7 + close * 0.55 + past * 0.3;
+  detectorFace.scale.set(faceS, faceS * 0.66, 1);
+
+  mats.detectorUv.opacity = 0.2 + clear * 0.35 + bright * 0.25 + past * 0.2;
+  // Cap close glow — local wash only, no screen-filling bloom
+  detectorGlow.intensity = Math.min(1.35, 0.22 + far * 0.3 + subtle * 0.35 + clear * 0.3 + bright * 0.25 + close * 0.15);
+  detectorGlow.distance = 24 + clear * 20 + bright * 12 + close * 8;
+  detectorFill.intensity = 0.05 + clear * 0.12 + close * 0.2 + past * 0.12;
+
+  // Soft local cyan wash near the detector — not whole-tunnel bloom
+  if (close > 0.08 || past > 0.3) {
+    accent.color.lerp(new THREE.Color(0x5de5ff), 0.04 * Math.max(close, past));
+  } else if (subtle > 0.15) {
+    accent.color.lerp(new THREE.Color(0x3a8aaa), 0.018 * subtle);
+  } else {
+    accent.color.lerp(new THREE.Color(0xf28c28), 0.025);
+  }
 }
 
 function updateColumnAtmosphere(dt, boosting) {
@@ -770,7 +1628,7 @@ function updateColumnAtmosphere(dt, boosting) {
   const turbulent = sector?.name === 'TURBULÊNCIA';
   const turbPulse = turbulent ? 1 + Math.sin(state.elapsed * 5.5) * 0.12 : 1;
 
-  scene.fog.density = profile.fog * (boosting ? 0.82 : 1) * (turbulent ? 1.08 : 1);
+  scene.fog.density = (sector?.fog ?? 0.009) * 2.4 * (boosting ? 0.85 : 1);
   scene.background.lerp(new THREE.Color(profile.tint), 0.04);
   columnFill.intensity = 0.28 + profile.flow * 0.12 + (boosting ? 0.18 : 0) + (turbulent ? 0.1 : 0);
 
@@ -801,24 +1659,10 @@ function updateColumnAtmosphere(dt, boosting) {
     m.mesh.rotation.x += dt * m.spin;
     m.mesh.rotation.y += dt * m.spin * 0.7;
     const close = Math.abs(m.offset - dist) < 8 && Math.abs(m.lane - (state.laneVisual || 0)) < 0.55;
-    m.mesh.visible = !close;
+    m.mesh.visible = (DEBUG_COLUMN || DEBUG_DETECTOR) ? false : !close;
   });
 
-  // Detector UV/Vis approach: 1450 → appear, 1475 → clear, 1490 → intense, 1500 → arrival
-  const remaining = RACE_DISTANCE - dist;
-  const approach = THREE.MathUtils.clamp(1 - remaining / 50, 0, 1);
-  const early = THREE.MathUtils.clamp(1 - remaining / 120, 0, 1);
-  const intense = THREE.MathUtils.clamp(1 - remaining / 10, 0, 1);
-  detectorGroup.visible = remaining < 160;
-  detectorFace.scale.set(10 + approach * 8 + intense * 3, 6.6 + approach * 5.2 + intense * 2, 1);
-  detectorHousing.scale.setScalar(0.85 + early * 0.55 + approach * 0.2);
-  detectorGlow.intensity = 0.6 + early * 1.4 + approach * 2.2 + intense * 1.5;
-  mats.detectorUv.opacity = 0.35 + approach * 0.5 + intense * 0.15;
-  if (intense > 0.2) {
-    accent.color.lerp(new THREE.Color(0xb48cff), 0.08);
-  } else {
-    accent.color.lerp(new THREE.Color(0xf28c28), 0.06);
-  }
+  updateDetectorApproach(dist);
 }
 
 // ---------------------------------------------------------------------------
@@ -1171,14 +2015,15 @@ function resetRaceEntities() {
     o.lane = LANES[i % 3];
     o.hit = false;
     o.active = true;
-    o.g.visible = true;
+    o.g.visible = !(DEBUG_COLUMN || DEBUG_DETECTOR);
   });
   pickups.forEach((p, i) => {
     p.d = 60 + i * 58;
     p.lane = LANES[(i + 1) % 3];
     p.active = true;
-    p.g.visible = true;
+    p.g.visible = !(DEBUG_COLUMN || DEBUG_DETECTOR);
   });
+  applyDebugColumnGameplayHide();
 }
 
 function laneMove(dir) {
@@ -1317,6 +2162,17 @@ function updateRace(dt) {
 
   // Rivals AI
   rivals.forEach((r, i) => {
+    if (DEBUG_COLUMN || DEBUG_DETECTOR || VISUAL_PHASE1_COMPOSITION) {
+      if (r.actor) {
+        r.actor.sprite.visible = false;
+        r.actor.label.visible = false;
+      } else if (r.g) r.g.visible = false;
+      return;
+    }
+    if (r.actor) {
+      r.actor.sprite.visible = true;
+      r.actor.label.visible = true;
+    } else if (r.g) r.g.visible = true;
     r.laneTimer -= dt;
     if (r.laneTimer <= 0) {
       r.laneTimer = 1.2 + rnd() * 2.4;
@@ -1353,6 +2209,10 @@ function updateRace(dt) {
 
   // Obstacles
   obstacles.forEach((o, i) => {
+    if (DEBUG_COLUMN || DEBUG_DETECTOR || VISUAL_PHASE1_COMPOSITION) {
+      o.g.visible = false;
+      return;
+    }
     if (o.d < state.distance - 25) {
       if (!o.hit) state.obstaclesPassed += 1;
       o.d = state.distance + 140 + i * 18 + rnd() * 40;
@@ -1382,6 +2242,10 @@ function updateRace(dt) {
 
   // Pickups
   pickups.forEach((p, i) => {
+    if (DEBUG_COLUMN || DEBUG_DETECTOR || VISUAL_PHASE1_COMPOSITION) {
+      p.g.visible = false;
+      return;
+    }
     if (p.d < state.distance - 18) {
       p.d = state.distance + 100 + i * 20 + rnd() * 50;
       p.lane = LANES[Math.floor(rnd() * 3)];
@@ -1430,13 +2294,13 @@ function updateRace(dt) {
   columnFill.position.copy(vita.position);
   columnFill.position.addScaledVector(frameAt(THREE.MathUtils.clamp(state.distance / RACE_DISTANCE, 0, 0.998)).trueUp, 2.5);
 
-  // Camera follow spline (unchanged behavior)
+  // Camera follow spline — third-person arcade; Vita stays lower-middle
   const t = THREE.MathUtils.clamp(state.distance / RACE_DISTANCE, 0, 0.998);
   const f = frameAt(t);
   const camPos = worldAt(state.distance - GAME_CONFIG.camera.back, state.laneVisual * 0.35, GAME_CONFIG.camera.height, _tmp);
   camera.position.lerp(camPos, 1 - Math.pow(0.001, dt));
-  const look = worldAt(state.distance + GAME_CONFIG.camera.lookAhead, state.laneVisual * 0.2, 1.4, _tmp2);
-  look.addScaledVector(f.trueUp, 0.4);
+  const look = worldAt(state.distance + GAME_CONFIG.camera.lookAhead, state.laneVisual * 0.2, 1.15, _tmp2);
+  look.addScaledVector(f.trueUp, 0.15);
   camera.up.lerp(f.trueUp, 0.08);
   camera.lookAt(look);
 
@@ -1467,7 +2331,6 @@ function sampleFps(dt) {
     if (qualityState.mode === 'auto' && lastFps < 28) {
       qualityState.fewerParticles = true;
       qualityState.particleMul = Math.max(0.35, qualityState.particleMul * 0.7);
-      renderer.setPixelRatio(Math.min(devicePixelRatio, 1.1));
     }
   }
 }
@@ -1548,8 +2411,7 @@ addEventListener('touchend', (e) => {
 function resize() {
   camera.aspect = innerWidth / innerHeight;
   camera.updateProjectionMatrix();
-  renderer.setSize(innerWidth, innerHeight);
-  renderer.setPixelRatio(Math.min(devicePixelRatio, qualityState.pixelRatioCap));
+  applyRenderSize();
 }
 addEventListener('resize', resize);
 
@@ -1578,7 +2440,7 @@ $('settingQuality').value = qualityState.mode;
 $('settingQuality').onchange = (e) => {
   applyQuality(e.target.value, lastFps);
   Storage.set('chromaracers_quality', e.target.value);
-  renderer.setPixelRatio(Math.min(devicePixelRatio, qualityState.pixelRatioCap));
+  applyRenderSize();
 };
 $('settingAudio').checked = AudioBus.enabled;
 $('settingAudio').onchange = (e) => { AudioBus.enabled = e.target.checked; };
@@ -1636,9 +2498,29 @@ rivals.forEach((r) => {
 });
 showScreen('menu');
 state.mode = 'menu';
+applyEnvironmentDebugVisibility();
+applyDebugColumnGameplayHide();
 animate();
 
 // Expose config for debugging / easy distance change verification
+function snapCameraToPlayer() {
+  const t = THREE.MathUtils.clamp(state.distance / RACE_DISTANCE, 0, 0.998);
+  const f = frameAt(t);
+  camera.position.copy(worldAt(state.distance - GAME_CONFIG.camera.back, state.laneVisual * 0.35, GAME_CONFIG.camera.height, _tmp));
+  const look = worldAt(state.distance + GAME_CONFIG.camera.lookAhead, state.laneVisual * 0.2, 1.15, _tmp2);
+  look.addScaledVector(f.trueUp, 0.15);
+  camera.up.copy(f.trueUp);
+  camera.lookAt(look);
+  camera.fov = GAME_CONFIG.camera.baseFov;
+  camera.updateProjectionMatrix();
+}
+
 window.CHROMARACERS = {
   GAME_CONFIG, RACE_DISTANCE, SECTORS, state, Storage, rivals, vita, spriteActors,
+  DEBUG_SILICA, DEBUG_COLUMN, DEBUG_FLOW, DEBUG_MOLECULES, DEBUG_DETECTOR, DETECTOR_DISTANCE,
+  VISUAL_PHASE1_COMPOSITION,
+  columnRadius: GAME_CONFIG.columnRadius,
+  silicaStats, silicaGroup, flowGroup, envGroup, detectorGroup, infraGroup,
+  snapCameraToPlayer, applyEnvironmentDebugVisibility, applyDebugColumnGameplayHide,
+  placeDetector, updateDetectorApproach,
 };
