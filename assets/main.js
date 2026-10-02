@@ -765,11 +765,11 @@ const SILICA_SPRITE_ROOT = './assets/environment/silica_sprites';
 
 /** Native pixel extents → world scale bias (sprites are ~30–112 px). */
 const SILICA_SIZE_SCALE = {
-  XS: 0.42,
-  S: 0.62,
-  M: 0.95,
-  L: 1.28,
-  XL: 1.65,
+  XS: 0.55,
+  S: 0.85,
+  M: 1.25,
+  L: 1.65,
+  XL: 2.05,
 };
 
 /**
@@ -819,7 +819,7 @@ function buildSilicaCatalog() {
   for (const m of morphs) {
     for (let v = 1; v <= 4; v++) {
       const key = `cluster_${m.morph}_v${v}`;
-      const scale = 1.05 + (v - 1) * 0.38;
+      const scale = 1.45 + (v - 1) * 0.45; // larger clusters seal wall gaps
       catalog[key] = {
         url: `${SILICA_SPRITE_ROOT}/03_clusters/sprites/${m.id}_v${v}.png`,
         kind: 'cluster',
@@ -836,7 +836,7 @@ function buildSilicaCatalog() {
       kind: 'detached',
       family: 'detached',
       sizeClass: 'M',
-      baseScale: 0.95,
+      baseScale: 1.2,
     };
   }
   for (let i = 1; i <= 6; i++) {
@@ -845,7 +845,7 @@ function buildSilicaCatalog() {
       kind: 'floating',
       family: 'floating',
       sizeClass: 'S',
-      baseScale: 0.72,
+      baseScale: 0.9,
     };
   }
   return catalog;
@@ -1010,36 +1010,36 @@ function getSilicaWallBounds() {
 
 /**
  * Sample silica on the lateral wall panel only (between lower rail and ceiling beam).
- * Entire elev band is fair game — ceiling above the horizontal beams is excluded.
- * Attachment: mostly wall-bound, few detached, rare free.
+ * Almost entirely wall-bound so the lateral reads as a continuous packed surface.
  */
-function sampleSilicaWall(sideSign) {
-  const R = GAME_CONFIG.columnRadius - 0.12;
+function sampleSilicaWall(sideSign, elev01 = null) {
+  const R = GAME_CONFIG.columnRadius - 0.08;
   const { elevFloor, elevCeil } = getSilicaWallBounds();
-  // Fill the whole lateral band uniformly (wall fully packed)
-  const elev = elevFloor + rnd() * (elevCeil - elevFloor);
+  const elev = elev01 == null
+    ? elevFloor + rnd() * (elevCeil - elevFloor)
+    : elevFloor + THREE.MathUtils.clamp(elev01, 0, 1) * (elevCeil - elevFloor);
   const angleAroundColumn = sideSign > 0 ? elev : Math.PI - elev;
 
   const attachRoll = rnd();
   let radialOffset;
   let attach;
-  if (attachRoll < 0.86) {
-    radialOffset = 0.02 + rnd() * 0.42;
+  if (attachRoll < 0.92) {
+    radialOffset = 0.01 + rnd() * 0.28;
     attach = 'wall';
-  } else if (attachRoll < 0.97) {
-    radialOffset = 0.55 + rnd() * 0.95;
+  } else if (attachRoll < 0.985) {
+    radialOffset = 0.35 + rnd() * 0.55;
     attach = 'detached';
   } else {
-    radialOffset = 1.7 + rnd() * 1.8;
+    radialOffset = 1.2 + rnd() * 1.2;
     attach = 'floating';
   }
 
   let radial = R - radialOffset;
   const corridorR = GAME_CONFIG.laneWidth * 2.15;
   if (radial < corridorR + 0.9) {
-    radial = corridorR + 0.9 + rnd() * 0.45;
+    radial = corridorR + 0.9 + rnd() * 0.35;
     radialOffset = R - radial;
-    if (attach === 'floating' && radialOffset < 1.4) attach = 'detached';
+    if (attach === 'floating' && radialOffset < 1.2) attach = 'detached';
   }
 
   const lateral = Math.cos(angleAroundColumn) * radial;
@@ -1509,110 +1509,74 @@ function buildSilicaField() {
     placements.push({ key, distance, angle, radialOffset, scale });
   };
 
-  const scaleFor = (key) => {
+  const scaleFor = (key, boost = 1) => {
     const layer = silicaLayers[key];
-    return (layer?.baseScale ?? 1) * (0.88 + rnd() * 0.24) * debugScale;
+    return (layer?.baseScale ?? 1) * (1.05 + rnd() * 0.35) * debugScale * boost;
   };
 
   const archDists = [];
   for (let i = 0; i < frameCount; i++) {
     archDists.push(startD + (i / Math.max(1, frameCount - 1)) * (endD - startD));
   }
-  const onArch = (d) => archDists.some((ad) => Math.abs(d - ad) < archClear);
+  // Slightly tighter clear so panels pack up to the arch edge (still no silica ON rings)
+  const clear = Math.max(0.85, archClear * 0.72);
+  const onArch = (d) => archDists.some((ad) => Math.abs(d - ad) < clear);
 
-  // Fill every bay between consecutive arches — entire L/R lateral panels packed
-  const softMax = Math.floor(32000 * Math.min(1.1, mul));
+  /**
+   * Dense overlapping grid fill — minimize empty wall. Overlap is intentional.
+   * Per-bay / per-side quota keeps coverage even along the full race.
+   */
+  const softMax = Math.floor(72000 * Math.min(1.15, mul));
   const bayCount = Math.max(1, frameCount - 1);
-  const perBay = Math.max(28, Math.floor(softMax / bayCount));
-  const perSide = Math.max(14, Math.floor(perBay / 2));
+  const perSide = Math.max(40, Math.floor(softMax / (bayCount * 2)));
+  const elevSteps = qualityState.mode === 'low' ? 8 : 11;
+  const layers = qualityState.mode === 'low' ? 2 : 3;
 
   for (let bi = 0; bi < bayCount; bi++) {
-    const d0 = archDists[bi] + archClear;
-    const d1 = archDists[bi + 1] - archClear;
-    if (d1 <= d0 + 0.4) continue;
+    const d0 = archDists[bi] + clear;
+    const d1 = archDists[bi + 1] - clear;
+    if (d1 <= d0 + 0.35) continue;
     const bayLen = d1 - d0;
+    // Distance steps sized so layers × elevSteps × distSteps ≈ perSide
+    const cellsPerLayer = Math.max(elevSteps, Math.ceil(perSide / layers));
+    const distSteps = Math.max(4, Math.ceil(cellsPerLayer / elevSteps));
+    const distStep = bayLen / distSteps;
 
     for (const sideSign of [-1, 1]) {
       let placedSide = 0;
-      // Dense seeds across the full panel height (rail → ceiling beam)
-      const seeds = Math.max(5, Math.floor(perSide * 0.24));
-      for (let s = 0; s < seeds; s++) {
-        if (placedSide >= perSide) break;
-        const dd = d0 + rnd() * bayLen;
-        if (onArch(dd)) continue;
-        const depth01 = dd / RACE_DISTANCE;
-        const base = sampleSilicaWall(sideSign);
+      for (let layer = 0; layer < layers; layer++) {
+        for (let di = 0; di < distSteps; di++) {
+          for (let ei = 0; ei < elevSteps; ei++) {
+            if (placedSide >= perSide) break;
+            const dd = d0 + (di + 0.5) * distStep
+              + (rnd() - 0.5) * distStep * 0.9
+              + layer * distStep * 0.28;
+            if (dd < d0 || dd > d1 || onArch(dd)) continue;
+            const elev01 = (ei + 0.5 + layer * 0.34 + (rnd() - 0.5) * 0.7) / elevSteps;
+            if (elev01 < 0 || elev01 > 1) continue;
 
-        let key;
-        let radialOffset = base.radialOffset;
-        if (base.attach === 'floating') {
-          key = pickFrom(FLOATING_KEYS);
-        } else if (base.attach === 'detached') {
-          key = pickFrom(DETACHED_KEYS);
-        } else if (rnd() < 0.38) {
-          key = pickClusterKey(depth01);
-          radialOffset = 0.02 + rnd() * 0.4;
-        } else {
-          key = pickParticleKey(depth01, false);
-          radialOffset = 0.02 + rnd() * 0.45;
-        }
-        queue(key, dd, base.angleAroundColumn, radialOffset, scaleFor(key));
-        placedSide += 1;
+            const depth01 = dd / RACE_DISTANCE;
+            const sample = sampleSilicaWall(sideSign, elev01);
+            let key;
+            const roll = rnd();
+            if (roll < 0.4) key = pickClusterKey(depth01);
+            else if (roll < 0.94) key = pickParticleKey(depth01, depth01 > 0.7);
+            else if (roll < 0.985) key = pickFrom(DETACHED_KEYS);
+            else key = pickFrom(FLOATING_KEYS);
 
-        // Companions fill the panel around each seed (solid wall deposit)
-        const companions = 5 + Math.floor(rnd() * 5); // 5–9
-        for (let c = 0; c < companions; c++) {
-          if (placedSide >= perSide) break;
-          const p2 = sampleSilicaWall(sideSign);
-          const angle = THREE.MathUtils.lerp(
-            base.angleAroundColumn,
-            p2.angleAroundColumn,
-            0.2 + rnd() * 0.55
-          );
-          const d2 = THREE.MathUtils.clamp(dd + (rnd() - 0.5) * Math.min(2.4, bayLen * 0.55), d0, d1);
-          if (onArch(d2)) continue;
-          const depth2 = d2 / RACE_DISTANCE;
-          let cKey;
-          let cOff;
-          const ar = rnd();
-          if (ar < 0.86) {
-            cKey = rnd() < 0.28 ? pickClusterKey(depth2) : pickParticleKey(depth2, rnd() < 0.45);
-            cOff = 0.02 + rnd() * 0.48;
-          } else if (ar < 0.97) {
-            cKey = pickFrom(DETACHED_KEYS);
-            cOff = 0.55 + rnd() * 0.9;
-          } else {
-            cKey = pickFrom(FLOATING_KEYS);
-            cOff = 1.7 + rnd() * 1.6;
+            const boost = layer === 0 ? 1.25 : layer === 1 ? 1.08 : 0.95;
+            queue(
+              key,
+              dd,
+              sample.angleAroundColumn + (rnd() - 0.5) * 0.05,
+              sample.radialOffset,
+              scaleFor(key, boost)
+            );
+            placedSide += 1;
           }
-          queue(cKey, d2, angle, cOff, scaleFor(cKey) * (0.82 + rnd() * 0.22));
-          placedSide += 1;
         }
       }
-
-      // Extra XS/S knit so each lateral panel reads as a continuous packed bed
-      const knit = Math.floor(perSide * 0.3);
-      for (let k = 0; k < knit; k++) {
-        if (placedSide >= perSide) break;
-        const dd = d0 + rnd() * bayLen;
-        if (onArch(dd)) continue;
-        const p = sampleSilicaWall(sideSign);
-        const key = pickParticleKey(Math.max(dd / RACE_DISTANCE, 0.4), true);
-        queue(key, dd, p.angleAroundColumn, 0.03 + rnd() * 0.4, scaleFor(key) * 0.85);
-        placedSide += 1;
-      }
     }
-  }
-
-  if (placements.length > softMax) {
-    placements.sort((a, b) => a.distance - b.distance);
-    const keep = [];
-    const stride = placements.length / softMax;
-    for (let i = 0; i < softMax; i++) {
-      keep.push(placements[Math.min(placements.length - 1, Math.floor(i * stride + rnd() * stride * 0.3))]);
-    }
-    placements.length = 0;
-    keep.forEach((p) => placements.push(p));
   }
 
   /** @type {Record<string, number>} */
