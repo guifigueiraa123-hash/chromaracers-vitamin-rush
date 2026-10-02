@@ -26,7 +26,7 @@ const GAME_CONFIG = {
   /** Etapa 3.2.1 — structural frame parameters (geometry only). */
   columnLength: 1500, // matches raceDistance; frames span this length
   frameSpacing: 14,
-  frameThickness: 0.55,
+  frameThickness: 0.95,
   longitudinalBeamCount: 9,
   longitudinalBeamThickness: 0.4,
   lowerBeamHeight: -1.25, // track-level lateral rails (trueUp lift)
@@ -938,19 +938,16 @@ function pickParticleKey(preferSmall = false) {
 }
 
 /**
- * Etapa 3.2.1 — open circular arch in local column coordinates.
+ * Open circular arch curve in local column coordinates.
  * Local X = side, Y = trueUp, Z = tangent.
  * Circle solved so feet sit on L/R pista rails and the crown reaches `radius`.
- * Nothing continues below the race surface.
  */
-function createArchFrameGeometry(radius, tubeRadius, floorLift) {
+function createArchCurveData(radius, floorLift) {
   const halfW = GAME_CONFIG.laneWidth * 2.35;
-  // Circle center on the mid-plane: passes through (±halfW, floorLift) and (0, radius)
   const cy = (radius * radius - halfW * halfW - floorLift * floorLift)
     / (2 * (radius - floorLift));
   const rr = radius - cy;
-  const footAng = Math.atan2(floorLift - cy, halfW); // right foot angle from +X
-  // Sweep right foot → top → left foot (counter-clockwise through the crown)
+  const footAng = Math.atan2(floorLift - cy, halfW);
   const a0 = footAng;
   const a1 = Math.PI - footAng;
   const pathSegs = qualityState.mode === 'low' ? 32 : 56;
@@ -959,16 +956,90 @@ function createArchFrameGeometry(radius, tubeRadius, floorLift) {
     const a = a0 + (a1 - a0) * (i / pathSegs);
     pts.push(new THREE.Vector3(Math.cos(a) * rr, cy + Math.sin(a) * rr, 0));
   }
-  const archCurve = new THREE.CatmullRomCurve3(pts, false, 'catmullrom', 0.05);
+  const curve = new THREE.CatmullRomCurve3(pts, false, 'catmullrom', 0.05);
+  return { curve, a0, a1, cy, rr, halfW, pathSegs };
+}
+
+function createArchFrameGeometry(radius, tubeRadius, floorLift) {
+  const data = createArchCurveData(radius, floorLift);
   const radial = qualityState.mode === 'low' ? 6 : 10;
-  const geoArch = new THREE.TubeGeometry(archCurve, pathSegs, tubeRadius, radial, false);
-  geoArch.userData.archAngles = { a0, a1, cy, rr, halfW };
+  const geoArch = new THREE.TubeGeometry(data.curve, data.pathSegs, tubeRadius, radial, false);
+  geoArch.userData.archAngles = {
+    a0: data.a0, a1: data.a1, cy: data.cy, rr: data.rr, halfW: data.halfW,
+  };
   return geoArch;
 }
 
 /** Basis matrix: local +X→side, +Y→trueUp, +Z→tangent. */
 function columnFrameBasis(f, out = new THREE.Matrix4()) {
   return out.makeBasis(f.side, f.trueUp, f.tangent);
+}
+
+/**
+ * Perforated arch in local space: thick tube segments with circular voids
+ * (gap + torus rim) spaced along the circumference.
+ */
+function buildPerforatedArch(radius, tubeRadius, floorLift, metalMat, glowMat) {
+  const { curve } = createArchCurveData(radius, floorLift);
+  const group = new THREE.Group();
+  group.name = 'columnFramePerforated';
+  const radial = qualityState.mode === 'low' ? 5 : 8;
+  const holeCount = 5 + Math.floor(rnd() * 4); // 5–8
+  const baseHalf = 0.045 + rnd() * 0.025; // larger voids so cutouts read at PIX=3
+  const holes = [];
+  for (let i = 0; i < holeCount; i++) {
+    let t = (i + 0.5) / holeCount + (rnd() - 0.5) * 0.035;
+    t = THREE.MathUtils.clamp(t, 0.08, 0.92);
+    holes.push({ t, half: baseHalf * (0.85 + rnd() * 0.35) });
+  }
+  holes.sort((a, b) => a.t - b.t);
+
+  const addSegment = (t0, t1) => {
+    if (t1 - t0 < 0.018) return;
+    const segs = Math.max(4, Math.floor((t1 - t0) * 48));
+    const pts = [];
+    for (let i = 0; i <= segs; i++) {
+      pts.push(curve.getPoint(t0 + (t1 - t0) * (i / segs)));
+    }
+    const segCurve = new THREE.CatmullRomCurve3(pts, false, 'catmullrom', 0.05);
+    const metal = new THREE.Mesh(
+      new THREE.TubeGeometry(segCurve, segs, tubeRadius, radial, false),
+      metalMat
+    );
+    group.add(metal);
+    const glow = new THREE.Mesh(
+      new THREE.TubeGeometry(segCurve, segs, tubeRadius * 0.28, 4, false),
+      glowMat
+    );
+    group.add(glow);
+  };
+
+  const _z = new THREE.Vector3(0, 0, 1);
+  let tCursor = 0;
+  for (const h of holes) {
+    addSegment(tCursor, h.t - h.half);
+    const p = curve.getPoint(h.t);
+    const tangent = curve.getTangent(h.t).normalize();
+    const rimR = tubeRadius * 1.08;
+    const rimTube = tubeRadius * 0.24;
+    const rim = new THREE.Mesh(
+      new THREE.TorusGeometry(rimR, rimTube, 6, 18),
+      metalMat
+    );
+    rim.position.copy(p);
+    rim.quaternion.setFromUnitVectors(_z, tangent);
+    group.add(rim);
+    const rimGlow = new THREE.Mesh(
+      new THREE.TorusGeometry(rimR, rimTube * 0.45, 5, 14),
+      glowMat
+    );
+    rimGlow.position.copy(p);
+    rimGlow.quaternion.copy(rim.quaternion);
+    group.add(rimGlow);
+    tCursor = h.t + h.half;
+  }
+  addSegment(tCursor, 1);
+  return group;
 }
 
 /**
@@ -992,20 +1063,39 @@ function buildColumnStructure() {
   const structure = new THREE.Group();
   structure.name = 'columnStructure';
 
-  // --- Transversal curved frames + inner neon glow ---
-  const archGeo = createArchFrameGeometry(R, frameThick * 0.5, floorLift);
+  // --- Transversal curved frames: thick solids + random perforated arches ---
+  const tubeR = frameThick * 0.5;
+  const archGeo = createArchFrameGeometry(R, tubeR, floorLift);
   const { a0, a1, cy, rr } = archGeo.userData.archAngles;
-  const frames = new THREE.InstancedMesh(archGeo, mats.columnFrame, frameCount);
-  frames.name = 'columnFrames';
-  frames.frustumCulled = false;
-  frames.instanceMatrix.setUsage(THREE.StaticDrawUsage);
-
-  const glowGeo = createArchFrameGeometry(R - 0.35, frameThick * 0.12, floorLift);
   const glowMat = new THREE.MeshBasicMaterial({
     color: 0x39eaff, transparent: true, opacity: 0.9,
     blending: THREE.AdditiveBlending, depthWrite: false, fog: false,
   });
-  const glow = new THREE.InstancedMesh(glowGeo, glowMat, frameCount);
+  const glowGeo = createArchFrameGeometry(R - 0.45, frameThick * 0.14, floorLift);
+
+  // Pick ~28% of arches to be perforated (stable via seeded rnd)
+  const perforated = new Array(frameCount);
+  let solidCount = 0;
+  for (let i = 0; i < frameCount; i++) {
+    perforated[i] = rnd() < 0.28;
+    if (!perforated[i]) solidCount += 1;
+  }
+  // Guarantee one near-camera perforated arch for readable cutouts
+  if (![1, 2, 3, 4].some((i) => perforated[i])) {
+    if (!perforated[2]) solidCount -= 1;
+    perforated[2] = true;
+  }
+  if (solidCount === 0) {
+    perforated[0] = false;
+    solidCount = 1;
+  }
+
+  const frames = new THREE.InstancedMesh(archGeo, mats.columnFrame, solidCount);
+  frames.name = 'columnFrames';
+  frames.frustumCulled = false;
+  frames.instanceMatrix.setUsage(THREE.StaticDrawUsage);
+
+  const glow = new THREE.InstancedMesh(glowGeo, glowMat, solidCount);
   glow.name = 'columnFrameGlow';
   glow.frustumCulled = false;
 
@@ -1015,23 +1105,38 @@ function buildColumnStructure() {
   const cAccent = new THREE.Color(0xffffff);
   const startD = 8;
   const endD = Math.min(length, DETECTOR_DISTANCE) - 6;
+  let solidSlot = 0;
+  let perforatedCount = 0;
   for (let i = 0; i < frameCount; i++) {
     const d = startD + (i / Math.max(1, frameCount - 1)) * (endD - startD);
     const f = frameAt(THREE.MathUtils.clamp(d / RACE_DISTANCE, 0, 0.999));
-    // Equivalent to ring.position.copy(f.p).addScaledVector(f.trueUp, COLUMN_LIFT)
     dummy.position.copy(f.p).addScaledVector(f.trueUp, COLUMN_LIFT);
     dummy.quaternion.setFromRotationMatrix(columnFrameBasis(f, basis));
     dummy.scale.set(1, 1, 1);
     dummy.updateMatrix();
-    frames.setMatrixAt(i, dummy.matrix);
-    glow.setMatrixAt(i, dummy.matrix);
-    frames.setColorAt(i, i % 4 === 0 ? cAccent : cBase); // ritmo: todo 4º arco mais claro
+
+    if (perforated[i]) {
+      const metalMat = i % 4 === 0 ? mats.columnFrameAccent : mats.columnFrame;
+      const perf = buildPerforatedArch(R, tubeR, floorLift, metalMat, glowMat);
+      perf.position.copy(dummy.position);
+      perf.quaternion.copy(dummy.quaternion);
+      structure.add(perf);
+      perforatedCount += 1;
+    } else {
+      frames.setMatrixAt(solidSlot, dummy.matrix);
+      glow.setMatrixAt(solidSlot, dummy.matrix);
+      frames.setColorAt(solidSlot, i % 4 === 0 ? cAccent : cBase);
+      solidSlot += 1;
+    }
   }
+  frames.count = solidSlot;
+  glow.count = solidSlot;
   frames.instanceMatrix.needsUpdate = true;
   glow.instanceMatrix.needsUpdate = true;
   if (frames.instanceColor) frames.instanceColor.needsUpdate = true;
   structure.add(frames);
   structure.add(glow);
+  structure.userData.archStats = { total: frameCount, solid: solidSlot, perforated: perforatedCount };
 
   // --- Ceiling longitudinal beams only (skip crown center + all side/lower lines) ---
   const ceilingUs = [0.38, 0.62];
@@ -1058,6 +1163,14 @@ function buildColumnStructure() {
     beam.name = 'columnLongitudinalBeam';
     beam.frustumCulled = false;
     structure.add(beam);
+    // Thin neon core along ceiling beams
+    const beamGlow = new THREE.Mesh(
+      new THREE.TubeGeometry(beamCurve, beamSegs, beamThick * 0.12, 4, false),
+      glowMat
+    );
+    beamGlow.name = 'columnLongitudinalGlow';
+    beamGlow.frustumCulled = false;
+    structure.add(beamGlow);
   }
 
   // --- Lower L/R rails at pista level (silica bed floor limit; never cross center) ---
@@ -2856,6 +2969,14 @@ window.CHROMARACERS = {
   hasColumnWall: () => !!envGroup.getObjectByName('columnWall'),
   hasColumnFrames: () => !!envGroup.getObjectByName('columnFrames'),
   columnFrameCount: () => envGroup.getObjectByName('columnFrames')?.count ?? 0,
+  archStats: () => envGroup.getObjectByName('columnStructure')?.userData?.archStats ?? null,
+  perforatedArchCount: () => {
+    const s = envGroup.getObjectByName('columnStructure');
+    if (!s) return 0;
+    let n = 0;
+    s.children.forEach((c) => { if (c.name === 'columnFramePerforated') n += 1; });
+    return n;
+  },
   silicaBeadCount: () => envGroup.getObjectByName('silicaBeads')?.count ?? 0,
   hasLateralSilica: () => !!(envGroup.getObjectByName('silicaWallL') && envGroup.getObjectByName('silicaWallR')),
   wallTextureReady: () => !!wallMat2?.map,
