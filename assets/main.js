@@ -889,6 +889,8 @@ const silicaStats = {
   floating: 0,
   instances: 0,
   wallBound: 0,
+  left: 0,
+  right: 0,
   bySize: { XS: 0, S: 0, M: 0, L: 0, XL: 0 },
   byMorph: { compact: 0, elongated: 0, irregular: 0, layered: 0, scattered: 0 },
 };
@@ -968,64 +970,83 @@ function pickClusterKey(depth01) {
 }
 
 /**
- * Column-coordinate sample for stationary-phase silica.
- * Returns distanceAlongSpline + angleAroundColumn + radialOffset (+ derived lateral/lift).
- *
- * Density gradient (intentional, not uniform circumference):
- *   HIGH   — L/R middle wall, lower side walls
- *   MED    — outer lateral / side→lower transition
- *   LOW    — upper peripheral
- *   V.LOW  — ceiling
- *
- * Attachment:
- *   ~82% wall-bound · ~14% slightly detached · ~4% free (rare)
+ * Lateral wall bounds from the armature:
+ * - Horizontal ceiling beams (u=0.38 / 0.62) → top of wall (ceiling above = no silica)
+ * - Lower L/R rails at pista → bottom of wall
+ * - Vertical arches → panel delimiters (no silica ON the arches)
+ */
+function getSilicaWallBounds() {
+  const R = GAME_CONFIG.columnRadius;
+  const halfW = GAME_CONFIG.laneWidth * 2.35;
+  const pistaLift = GAME_CONFIG.lowerBeamHeight ?? -1.25;
+  const floorLift = pistaLift - COLUMN_LIFT;
+  const cy = (R * R - halfW * halfW - floorLift * floorLift) / (2 * (R - floorLift));
+  const rr = R - cy;
+  const footAng = Math.atan2(floorLift - cy, halfW);
+  const a0 = footAng;
+  const a1 = Math.PI - footAng;
+  // Ceiling longitudinal beams sit at these arch parameters
+  const aCeilR = a0 + (a1 - a0) * 0.38;
+  const aCeilL = a0 + (a1 - a0) * 0.62;
+  const ceilXR = Math.cos(aCeilR) * rr;
+  const ceilYR = cy + Math.sin(aCeilR) * rr;
+  const ceilXL = Math.cos(aCeilL) * rr;
+  const ceilYL = cy + Math.sin(aCeilL) * rr;
+  // Elevation from column center (atan2(up, side)) — wall band only
+  const elevCeil = Math.atan2(ceilYR, Math.abs(ceilXR)) - 0.06; // just below beam
+  const elevFloor = Math.atan2(floorLift, halfW) + 0.08; // just above lower rail
+  const spacing = Math.max(8, GAME_CONFIG.frameSpacing || 18);
+  const frameThick = GAME_CONFIG.frameThickness || 0.95;
+  // Clearance so silica never sits on vertical arches
+  const archClear = frameThick * 0.85 + 0.55;
+  return {
+    elevFloor,
+    elevCeil,
+    spacing,
+    archClear,
+    length: GAME_CONFIG.columnLength || RACE_DISTANCE,
+  };
+}
+
+/**
+ * Sample silica on the lateral wall panel only (between lower rail and ceiling beam).
+ * Entire elev band is fair game — ceiling above the horizontal beams is excluded.
+ * Attachment: mostly wall-bound, few detached, rare free.
  */
 function sampleSilicaWall(sideSign) {
-  const R = GAME_CONFIG.columnRadius - 0.15; // inner face of column shell
-  const roll = rnd();
-  let elev;
-  if (roll < 0.40) elev = -0.05 + rnd() * 0.72;       // mid lateral — highest
-  else if (roll < 0.66) elev = -0.58 + rnd() * 0.42;  // lower side walls — highest
-  else if (roll < 0.84) elev = 0.55 + rnd() * 0.4;    // outer lateral / transition — medium
-  else if (roll < 0.96) elev = 0.9 + rnd() * 0.32;    // upper peripheral — low
-  else elev = 1.2 + rnd() * 0.28;                     // ceiling — very low
-  elev = THREE.MathUtils.clamp(elev, -0.62, 1.42);
-
+  const R = GAME_CONFIG.columnRadius - 0.12;
+  const { elevFloor, elevCeil } = getSilicaWallBounds();
+  // Fill the whole lateral band uniformly (wall fully packed)
+  const elev = elevFloor + rnd() * (elevCeil - elevFloor);
   const angleAroundColumn = sideSign > 0 ? elev : Math.PI - elev;
 
   const attachRoll = rnd();
   let radialOffset;
   let attach;
-  if (attachRoll < 0.83) {
-    // Wall-bound / incrusted — majority touch the inner wall
-    radialOffset = 0.02 + rnd() * 0.55;
+  if (attachRoll < 0.86) {
+    radialOffset = 0.02 + rnd() * 0.42;
     attach = 'wall';
   } else if (attachRoll < 0.97) {
-    // Slightly detached but still close to the wall
-    radialOffset = 0.65 + rnd() * 1.25;
+    radialOffset = 0.55 + rnd() * 0.95;
     attach = 'detached';
   } else {
-    // Genuinely free in mobile phase — extremely rare, keep clear of race corridor
-    radialOffset = 2.0 + rnd() * 2.4;
+    radialOffset = 1.7 + rnd() * 1.8;
     attach = 'floating';
   }
 
   let radial = R - radialOffset;
-  // Never collapse into the racing corridor
   const corridorR = GAME_CONFIG.laneWidth * 2.15;
-  if (radial < corridorR + 0.85) {
-    radial = corridorR + 0.85 + rnd() * 0.6;
+  if (radial < corridorR + 0.9) {
+    radial = corridorR + 0.9 + rnd() * 0.45;
     radialOffset = R - radial;
-    if (attach === 'floating' && radialOffset < 1.6) attach = 'detached';
+    if (attach === 'floating' && radialOffset < 1.4) attach = 'detached';
   }
 
   const lateral = Math.cos(angleAroundColumn) * radial;
-  let lift = Math.sin(angleAroundColumn) * radial;
-  // Keep clear of floor ribbon / pista
-  if (lift < -R * 0.48) lift = -R * 0.28 + rnd() * 0.35;
+  const lift = Math.sin(angleAroundColumn) * radial;
 
   return {
-    distanceAlongSpline: 0, // filled by caller
+    distanceAlongSpline: 0,
     angleAroundColumn,
     radialOffset,
     radial,
@@ -1090,6 +1111,8 @@ function placeSilicaInstance(layerKey, distance, angleAroundColumn, radialOffset
     silicaStats.bySize[layer.sizeClass] += 1;
   }
   if (radialOffset < 0.65) silicaStats.wallBound += 1;
+  if (Math.cos(angleAroundColumn) >= 0) silicaStats.right += 1;
+  else silicaStats.left += 1;
   silicaStats.instances += 1;
   return true;
 }
@@ -1449,10 +1472,10 @@ function buildColumnClamps(radius) {
 }
 
 /**
- * ENVIRONMENT 3.2 — stationary-phase silica on INNER cylindrical walls.
- * Individual PNG sprites placed in column coords (distance / angle / radialOffset).
- * L/R dense, ceiling almost clear, blue wall readable between clusters.
- * InstancedMesh only — no spritesheet texture, no world-XYZ scatter.
+ * ENVIRONMENT 3.2 — stationary-phase silica filling lateral wall PANELS.
+ * Horizontal ceiling beams = wall/ceiling delimiter (no silica above).
+ * Vertical arches = panel delimiters (no silica ON the arches).
+ * Individual PNG sprites; InstancedMesh only.
  */
 function buildSilicaField() {
   clearGroup(silicaGroup);
@@ -1462,6 +1485,8 @@ function buildSilicaField() {
   silicaStats.floating = 0;
   silicaStats.instances = 0;
   silicaStats.wallBound = 0;
+  silicaStats.left = 0;
+  silicaStats.right = 0;
   Object.keys(silicaStats.bySize).forEach((k) => { silicaStats.bySize[k] = 0; });
   Object.keys(silicaStats.byMorph).forEach((k) => { silicaStats.byMorph[k] = 0; });
   Object.keys(silicaLayers).forEach((key) => {
@@ -1471,6 +1496,12 @@ function buildSilicaField() {
 
   const mul = Math.min(1.15, qualityState.particleMul * (DEBUG_SILICA ? 1.25 : 1));
   const debugScale = DEBUG_SILICA ? 1.08 : 1;
+  const { spacing, archClear, length } = getSilicaWallBounds();
+  const lowMul = qualityState.mode === 'low' ? 0.65 : 1;
+  const frameCount = Math.max(12, Math.floor((length / spacing) * lowMul));
+  // Must match buildColumnStructure arch placement exactly
+  const startD = 8;
+  const endD = Math.min(length, DETECTOR_DISTANCE) - 6;
 
   /** @type {{ key: string, distance: number, angle: number, radialOffset: number, scale: number }[]} */
   const placements = [];
@@ -1480,41 +1511,37 @@ function buildSilicaField() {
 
   const scaleFor = (key) => {
     const layer = silicaLayers[key];
-    return (layer?.baseScale ?? 1) * (0.9 + rnd() * 0.22) * debugScale;
+    return (layer?.baseScale ?? 1) * (0.88 + rnd() * 0.24) * debugScale;
   };
 
-  // Leave metallic arches readable through the packing
-  const ringGaps = [];
-  for (let i = 0; i < SECTORS.length; i++) {
-    const s = SECTORS[i];
-    if (i > 0) ringGaps.push(s.start);
-    const mid = (s.start + s.end) * 0.5;
-    if (mid > 40 && mid < RACE_DISTANCE - 40) ringGaps.push(mid);
+  const archDists = [];
+  for (let i = 0; i < frameCount; i++) {
+    archDists.push(startD + (i / Math.max(1, frameCount - 1)) * (endD - startD));
   }
-  const nearRingGap = (d) => ringGaps.some((rd) => Math.abs(rd - d) < 4.8);
+  const onArch = (d) => archDists.some((ad) => Math.abs(d - ad) < archClear);
 
-  // Budget spans the FULL race — early break previously starved mid/far walls.
-  const softMax = Math.floor(14000 * Math.min(1.1, mul));
-  const patchStep = Math.max(1.05, 1.35 / Math.max(0.55, mul));
-  const span = Math.max(1, RACE_DISTANCE - 16);
-  const patchCount = Math.ceil(span / patchStep);
-  // ~70% of budget for cluster formations, rest for XS/S knit
-  const perPatch = Math.max(6, Math.floor((softMax * 0.72) / patchCount));
+  // Fill every bay between consecutive arches — entire L/R lateral panels packed
+  const softMax = Math.floor(32000 * Math.min(1.1, mul));
+  const bayCount = Math.max(1, frameCount - 1);
+  const perBay = Math.max(28, Math.floor(softMax / bayCount));
+  const perSide = Math.max(14, Math.floor(perBay / 2));
 
-  for (let pi = 0; pi < patchCount; pi++) {
-    const d0 = 6 + pi * patchStep;
-    if (d0 >= RACE_DISTANCE - 8) break;
-    if (nearRingGap(d0) && rnd() < 0.45) continue;
+  for (let bi = 0; bi < bayCount; bi++) {
+    const d0 = archDists[bi] + archClear;
+    const d1 = archDists[bi + 1] - archClear;
+    if (d1 <= d0 + 0.4) continue;
+    const bayLen = d1 - d0;
 
-    let placedHere = 0;
     for (const sideSign of [-1, 1]) {
-      // 1–2 formations / side so blue wall stays readable between clusters
-      const seeds = 1 + (rnd() < 0.55 ? 1 : 0);
+      let placedSide = 0;
+      // Dense seeds across the full panel height (rail → ceiling beam)
+      const seeds = Math.max(5, Math.floor(perSide * 0.24));
       for (let s = 0; s < seeds; s++) {
-        if (placedHere >= perPatch) break;
-        const base = sampleSilicaWall(sideSign);
-        const dd = d0 + (rnd() - 0.5) * patchStep * 0.85;
+        if (placedSide >= perSide) break;
+        const dd = d0 + rnd() * bayLen;
+        if (onArch(dd)) continue;
         const depth01 = dd / RACE_DISTANCE;
+        const base = sampleSilicaWall(sideSign);
 
         let key;
         let radialOffset = base.radialOffset;
@@ -1522,86 +1549,67 @@ function buildSilicaField() {
           key = pickFrom(FLOATING_KEYS);
         } else if (base.attach === 'detached') {
           key = pickFrom(DETACHED_KEYS);
-        } else if (rnd() < 0.42) {
+        } else if (rnd() < 0.38) {
           key = pickClusterKey(depth01);
-          radialOffset = 0.02 + rnd() * 0.45;
+          radialOffset = 0.02 + rnd() * 0.4;
         } else {
           key = pickParticleKey(depth01, false);
-          radialOffset = 0.02 + rnd() * 0.5;
+          radialOffset = 0.02 + rnd() * 0.45;
         }
         queue(key, dd, base.angleAroundColumn, radialOffset, scaleFor(key));
-        placedHere += 1;
+        placedSide += 1;
 
-        // Companions hug the seed → incrusted wall mass with gaps between groups
-        const companions = 3 + Math.floor(rnd() * 4); // 3–6
+        // Companions fill the panel around each seed (solid wall deposit)
+        const companions = 5 + Math.floor(rnd() * 5); // 5–9
         for (let c = 0; c < companions; c++) {
-          if (placedHere >= perPatch) break;
-          if (rnd() > 0.9) continue;
+          if (placedSide >= perSide) break;
           const p2 = sampleSilicaWall(sideSign);
           const angle = THREE.MathUtils.lerp(
             base.angleAroundColumn,
             p2.angleAroundColumn,
-            0.12 + rnd() * 0.32
+            0.2 + rnd() * 0.55
           );
-          const d2 = dd + (rnd() - 0.5) * 1.0;
-          if (nearRingGap(d2) && rnd() < 0.4) continue;
+          const d2 = THREE.MathUtils.clamp(dd + (rnd() - 0.5) * Math.min(2.4, bayLen * 0.55), d0, d1);
+          if (onArch(d2)) continue;
           const depth2 = d2 / RACE_DISTANCE;
           let cKey;
           let cOff;
           const ar = rnd();
-          if (ar < 0.84) {
-            cKey = rnd() < 0.3 ? pickClusterKey(depth2) : pickParticleKey(depth2, rnd() < 0.55);
-            cOff = 0.02 + rnd() * 0.55;
+          if (ar < 0.86) {
+            cKey = rnd() < 0.28 ? pickClusterKey(depth2) : pickParticleKey(depth2, rnd() < 0.45);
+            cOff = 0.02 + rnd() * 0.48;
           } else if (ar < 0.97) {
             cKey = pickFrom(DETACHED_KEYS);
-            cOff = 0.7 + rnd() * 1.15;
+            cOff = 0.55 + rnd() * 0.9;
           } else {
             cKey = pickFrom(FLOATING_KEYS);
-            cOff = 2.1 + rnd() * 2.2;
+            cOff = 1.7 + rnd() * 1.6;
           }
-          queue(cKey, d2, angle, cOff, scaleFor(cKey) * (0.85 + rnd() * 0.2));
-          placedHere += 1;
+          queue(cKey, d2, angle, cOff, scaleFor(cKey) * (0.82 + rnd() * 0.22));
+          placedSide += 1;
         }
       }
-    }
-  }
 
-  // Sparse XS/S knit along full length for far-wall depth (still L/R wall-bound)
-  const fillBudget = Math.floor(softMax * 0.28);
-  const fillStep = Math.max(1.4, 1.8 / Math.max(0.55, mul));
-  const fillCount = Math.ceil(span / fillStep);
-  const perFill = Math.max(1, Math.floor(fillBudget / Math.max(1, fillCount * 2)));
-  let fillPlaced = 0;
-  for (let d0 = 10; d0 < RACE_DISTANCE - 12; d0 += fillStep) {
-    if (fillPlaced >= fillBudget) break;
-    if (nearRingGap(d0) && rnd() < 0.4) continue;
-    for (const sideSign of [-1, 1]) {
-      const n = Math.min(perFill, 1 + Math.floor(rnd() * 2));
-      for (let i = 0; i < n; i++) {
-        if (fillPlaced >= fillBudget) break;
+      // Extra XS/S knit so each lateral panel reads as a continuous packed bed
+      const knit = Math.floor(perSide * 0.3);
+      for (let k = 0; k < knit; k++) {
+        if (placedSide >= perSide) break;
+        const dd = d0 + rnd() * bayLen;
+        if (onArch(dd)) continue;
         const p = sampleSilicaWall(sideSign);
-        if (p.attach === 'floating') continue;
-        const depth01 = d0 / RACE_DISTANCE;
-        const key = pickParticleKey(Math.max(depth01, 0.55), true);
-        queue(
-          key,
-          d0 + rnd() * fillStep * 0.5,
-          p.angleAroundColumn,
-          0.04 + rnd() * 0.5,
-          scaleFor(key) * 0.88
-        );
-        fillPlaced += 1;
+        const key = pickParticleKey(Math.max(dd / RACE_DISTANCE, 0.4), true);
+        queue(key, dd, p.angleAroundColumn, 0.03 + rnd() * 0.4, scaleFor(key) * 0.85);
+        placedSide += 1;
       }
     }
   }
 
   if (placements.length > softMax) {
-    // Distance-stratified trim — keep coverage along the full spline
     placements.sort((a, b) => a.distance - b.distance);
     const keep = [];
     const stride = placements.length / softMax;
     for (let i = 0; i < softMax; i++) {
-      keep.push(placements[Math.min(placements.length - 1, Math.floor(i * stride + rnd() * stride * 0.35))]);
+      keep.push(placements[Math.min(placements.length - 1, Math.floor(i * stride + rnd() * stride * 0.3))]);
     }
     placements.length = 0;
     keep.forEach((p) => placements.push(p));
