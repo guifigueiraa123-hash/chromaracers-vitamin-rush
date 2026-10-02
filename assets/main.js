@@ -580,6 +580,23 @@ mats.columnClampAccent = new THREE.MeshBasicMaterial({
   depthWrite: false,
   fog: false,
 });
+/** Thick section rings — structural blue, heavier than the thin wall membrane. */
+mats.columnSectionRing = new THREE.MeshBasicMaterial({
+  color: 0x2a6aa8,
+  transparent: true,
+  opacity: 0.92,
+  side: THREE.DoubleSide,
+  depthWrite: true,
+  fog: false,
+});
+mats.columnSectionRingCore = new THREE.MeshBasicMaterial({
+  color: 0x183a67,
+  transparent: true,
+  opacity: 0.7,
+  side: THREE.DoubleSide,
+  depthWrite: false,
+  fog: false,
+});
 
 let seed = 1337;
 function rnd() {
@@ -750,8 +767,8 @@ function pickParticleKey(preferSmall = false) {
 }
 
 /**
- * Phase A.1 — ONE continuous TubeGeometry inner wall on the race spline.
- * Cylinder reads from surface / fog / curvature — never concentric rings.
+ * Phase A.1 — continuous TubeGeometry inner wall + thick section rings.
+ * Wall stays a continuous glass membrane; concentric rings delimit SECTORS.
  */
 function buildColumnStructure() {
   const tubularSegments = Math.floor(520 * (qualityState.mode === 'low' ? 0.55 : 1));
@@ -765,8 +782,54 @@ function buildColumnStructure() {
   wallMesh.renderOrder = -2;
   envGroup.add(wallMesh);
 
-  // Phase A.1: structural seams live in the wall texture (true longitudinal UV).
-  // No extra TubeGeometry accents — those read as rings when foreshortened.
+  // Thick concentric arcs at sector boundaries — heavier than the thin wall
+  buildColumnSectionRings(R);
+}
+
+/**
+ * Concentric section rings along the spline.
+ * Tube thickness >> wall membrane so they clearly delimit column sections.
+ * Fully inset so the bulk reads inside the opaque BackSide wall.
+ */
+function buildColumnSectionRings(wallRadius) {
+  // Sector boundaries (+ mid-sector markers so sections read clearly in-camera)
+  const distances = [];
+  for (let i = 0; i < SECTORS.length; i++) {
+    const s = SECTORS[i];
+    if (i > 0) distances.push(s.start); // boundary
+    const mid = (s.start + s.end) * 0.5;
+    if (mid > 40 && mid < RACE_DISTANCE - 40) distances.push(mid);
+  }
+  distances.sort((a, b) => a - b);
+
+  // Thick torus fully inside the cylinder (wall is a thin membrane at R)
+  const tubeR = qualityState.mode === 'low' ? 1.05 : 1.35;
+  const majorR = wallRadius - tubeR * 0.85; // keep outer edge ~inside the wall
+
+  for (let i = 0; i < distances.length; i++) {
+    const d = distances[i];
+    if (d < 40 || d > RACE_DISTANCE - 30) continue;
+    const f = frameAt(THREE.MathUtils.clamp(d / RACE_DISTANCE, 0, 0.999));
+    const isBoundary = SECTORS.some((s, idx) => idx > 0 && Math.abs(s.start - d) < 0.5);
+    const bulkTube = isBoundary ? tubeR : tubeR * 0.72;
+
+    const ring = new THREE.Group();
+    ring.name = 'columnSectionRing';
+
+    const bulkGeo = new THREE.TorusGeometry(majorR, bulkTube, 16, 64);
+    const bulk = new THREE.Mesh(bulkGeo, mats.columnSectionRing);
+    bulk.renderOrder = 1;
+
+    const coreGeo = new THREE.TorusGeometry(majorR - bulkTube * 0.12, bulkTube * 0.45, 12, 48);
+    const core = new THREE.Mesh(coreGeo, mats.columnSectionRingCore);
+    core.renderOrder = 1;
+
+    ring.add(bulk, core);
+    ring.position.copy(f.p);
+    // Torus default plane is XY; align so ring is perpendicular to path tangent
+    ring.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), f.tangent);
+    envGroup.add(ring);
+  }
 }
 
 /** Thin longitudinal glass seams — L/R only, very subtle (no crosshair, no rings). */
