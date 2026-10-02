@@ -682,19 +682,34 @@ mats.columnSectionRingCore = new THREE.MeshBasicMaterial({
   depthWrite: false,
   fog: false,
 });
-/** Etapa 3.2.1 — steel / petroleum-blue structural members (no emissive / bloom). */
-mats.columnFrame = new THREE.MeshBasicMaterial({
-  color: 0x1e4a7a,
-  fog: false,
-});
-mats.columnFrameAccent = new THREE.MeshBasicMaterial({
-  color: 0x2a5f96,
-  fog: false,
-});
-mats.columnLowerBeam = new THREE.MeshBasicMaterial({
-  color: 0x183e6a,
-  fog: false,
-});
+/** Hard-banded metal matcap — volume + cyan rim from the pista (pixel-art friendly). */
+function makeMetalMatcap() {
+  const s = 64, c = document.createElement('canvas');
+  c.width = c.height = s;
+  const g = c.getContext('2d');
+  const gr = g.createRadialGradient(s * 0.36, s * 0.3, 0, s * 0.5, s * 0.5, s * 0.55);
+  // bandas duras: duas paradas no mesmo ponto
+  [[0, '#ffffff'], [0.12, '#ffffff'], [0.12, '#c8d4e8'], [0.4, '#c8d4e8'],
+   [0.4, '#7e8fb0'], [0.7, '#7e8fb0'], [0.7, '#3a4668'], [1, '#3a4668']]
+    .forEach(([o, col]) => gr.addColorStop(o, col));
+  g.fillStyle = gr;
+  g.fillRect(0, 0, s, s);
+  // luz refletida da pista (ciano) embaixo à direita
+  const rim = g.createRadialGradient(s * 0.8, s * 0.85, 0, s * 0.8, s * 0.85, s * 0.3);
+  rim.addColorStop(0, 'rgba(80,220,255,0.85)');
+  rim.addColorStop(1, 'rgba(80,220,255,0)');
+  g.fillStyle = rim;
+  g.fillRect(0, 0, s, s);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.magFilter = t.minFilter = THREE.NearestFilter;
+  return t;
+}
+const metalMatcap = makeMetalMatcap();
+
+mats.columnFrame = new THREE.MeshMatcapMaterial({ matcap: metalMatcap, color: 0x5aa0e8, fog: false });
+mats.columnFrameAccent = new THREE.MeshMatcapMaterial({ matcap: metalMatcap, color: 0x7cc8ff, fog: false });
+mats.columnLowerBeam = new THREE.MeshMatcapMaterial({ matcap: metalMatcap, color: 0x3a78b8, fog: false });
 
 let seed = 1337;
 function rnd() {
@@ -977,7 +992,7 @@ function buildColumnStructure() {
   const structure = new THREE.Group();
   structure.name = 'columnStructure';
 
-  // --- Transversal curved frames (shared geometry, InstancedMesh) ---
+  // --- Transversal curved frames + inner neon glow ---
   const archGeo = createArchFrameGeometry(R, frameThick * 0.5, floorLift);
   const { a0, a1, cy, rr } = archGeo.userData.archAngles;
   const frames = new THREE.InstancedMesh(archGeo, mats.columnFrame, frameCount);
@@ -985,8 +1000,19 @@ function buildColumnStructure() {
   frames.frustumCulled = false;
   frames.instanceMatrix.setUsage(THREE.StaticDrawUsage);
 
+  const glowGeo = createArchFrameGeometry(R - 0.35, frameThick * 0.12, floorLift);
+  const glowMat = new THREE.MeshBasicMaterial({
+    color: 0x39eaff, transparent: true, opacity: 0.9,
+    blending: THREE.AdditiveBlending, depthWrite: false, fog: false,
+  });
+  const glow = new THREE.InstancedMesh(glowGeo, glowMat, frameCount);
+  glow.name = 'columnFrameGlow';
+  glow.frustumCulled = false;
+
   const dummy = new THREE.Object3D();
   const basis = new THREE.Matrix4();
+  const cBase = new THREE.Color(0xa0b4d0);
+  const cAccent = new THREE.Color(0xffffff);
   const startD = 8;
   const endD = Math.min(length, DETECTOR_DISTANCE) - 6;
   for (let i = 0; i < frameCount; i++) {
@@ -998,9 +1024,14 @@ function buildColumnStructure() {
     dummy.scale.set(1, 1, 1);
     dummy.updateMatrix();
     frames.setMatrixAt(i, dummy.matrix);
+    glow.setMatrixAt(i, dummy.matrix);
+    frames.setColorAt(i, i % 4 === 0 ? cAccent : cBase); // ritmo: todo 4º arco mais claro
   }
   frames.instanceMatrix.needsUpdate = true;
+  glow.instanceMatrix.needsUpdate = true;
+  if (frames.instanceColor) frames.instanceColor.needsUpdate = true;
   structure.add(frames);
+  structure.add(glow);
 
   // --- Ceiling longitudinal beams only (skip crown center + all side/lower lines) ---
   const ceilingUs = [0.38, 0.62];
