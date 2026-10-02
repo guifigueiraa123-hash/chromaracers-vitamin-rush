@@ -751,7 +751,7 @@ function columnVisualProfile(distance) {
 const flowParticles = [];
 const ambientMolecules = [];
 
-/** Approved stationary-phase sprites — NearestFilter preserves 16-bit crispness. */
+/** Approved silica PNG sprites — NearestFilter preserves pixel-art crispness. */
 function loadSilicaTexture(url) {
   const tex = texLoader.load(url);
   tex.colorSpace = THREE.SRGBColorSpace;
@@ -761,180 +761,337 @@ function loadSilicaTexture(url) {
   return tex;
 }
 
-const SILICA_TEX = {
-  particleSmall: loadSilicaTexture('./assets/environment/silica/silica-particle-small.png'),
-  particleMedium: loadSilicaTexture('./assets/environment/silica/silica-particle-medium.png'),
-  particleLarge: loadSilicaTexture('./assets/environment/silica/silica-particle-large.png'),
-  clusterSmall: loadSilicaTexture('./assets/environment/silica/silica-cluster-small.png'),
-  clusterMedium: loadSilicaTexture('./assets/environment/silica/silica-cluster-medium.png'),
-  clusterLarge: loadSilicaTexture('./assets/environment/silica/silica-cluster-large.png'),
+const SILICA_SPRITE_ROOT = './assets/environment/silica_sprites';
+
+/** Native pixel extents → world scale bias (sprites are ~30–112 px). */
+const SILICA_SIZE_SCALE = {
+  XS: 0.42,
+  S: 0.62,
+  M: 0.95,
+  L: 1.28,
+  XL: 1.65,
 };
 
-// Packed-bed materials — white base; per-instance purple/violet/lavender tints
-const SILICA_MATS = {
-  particleSmall: new THREE.MeshBasicMaterial({
-    map: SILICA_TEX.particleSmall, color: 0xffffff, transparent: true, alphaTest: 0.28,
-    depthWrite: true, side: THREE.DoubleSide,
-  }),
-  particleMedium: new THREE.MeshBasicMaterial({
-    map: SILICA_TEX.particleMedium, color: 0xffffff, transparent: true, alphaTest: 0.28,
-    depthWrite: true, side: THREE.DoubleSide,
-  }),
-  particleLarge: new THREE.MeshBasicMaterial({
-    map: SILICA_TEX.particleLarge, color: 0xffffff, transparent: true, alphaTest: 0.28,
-    depthWrite: true, side: THREE.DoubleSide,
-  }),
-  clusterSmall: new THREE.MeshBasicMaterial({
-    map: SILICA_TEX.clusterSmall, color: 0xffffff, transparent: true, alphaTest: 0.28,
-    depthWrite: true, side: THREE.DoubleSide,
-  }),
-  clusterMedium: new THREE.MeshBasicMaterial({
-    map: SILICA_TEX.clusterMedium, color: 0xffffff, transparent: true, alphaTest: 0.28,
-    depthWrite: true, side: THREE.DoubleSide,
-  }),
-  clusterLarge: new THREE.MeshBasicMaterial({
-    map: SILICA_TEX.clusterLarge, color: 0xffffff, transparent: true, alphaTest: 0.28,
-    depthWrite: true, side: THREE.DoubleSide,
-  }),
-};
-
-/** Non-neon packed-bed tints — readable on navy wall, not neon. */
-const SILICA_TINTS = [
-  { color: new THREE.Color(0x3a1868), weight: 0.18 }, // dark violet
-  { color: new THREE.Color(0x5120a8), weight: 0.26 }, // deep purple
-  { color: new THREE.Color(0x6a38c0), weight: 0.24 }, // purple
-  { color: new THREE.Color(0x7a58b8), weight: 0.18 }, // blue-violet
-  { color: new THREE.Color(0x9a82d0), weight: 0.14 }, // muted lavender
-];
-
-function pickSilicaTint() {
-  let r = rnd();
-  for (const t of SILICA_TINTS) {
-    r -= t.weight;
-    if (r <= 0) return t.color;
+/**
+ * Individual PNG catalog (NOT the spritesheet as one texture).
+ * Families: sizes, colors, clusters, detached-near-wall, free-floating.
+ */
+function buildSilicaCatalog() {
+  /** @type {Record<string, { url: string, kind: string, family: string, sizeClass?: string, morph?: string, baseScale: number }>} */
+  const catalog = {};
+  const sizes = ['XS', 'S', 'M', 'L', 'XL'];
+  for (const sz of sizes) {
+    for (let v = 1; v <= 4; v++) {
+      const key = `size_${sz}_v${v}`;
+      catalog[key] = {
+        url: `${SILICA_SPRITE_ROOT}/01_particles_sizes/sprites/${sz}_v${v}.png`,
+        kind: 'particle',
+        family: 'sizes',
+        sizeClass: sz,
+        baseScale: SILICA_SIZE_SCALE[sz],
+      };
+    }
   }
-  return SILICA_TINTS[0].color;
+  const colorFiles = [
+    'A_lavender', 'B_dark_lavender', 'C_gray_violet', 'D_light_gray_violet', 'E_mixed',
+  ];
+  for (const name of colorFiles) {
+    for (let v = 1; v <= 4; v++) {
+      const key = `color_${name}_v${v}`;
+      // Color pack spans S→L native sizes; map variant index to scale band
+      const band = v <= 1 ? 'S' : v === 2 ? 'M' : v === 3 ? 'M' : 'L';
+      catalog[key] = {
+        url: `${SILICA_SPRITE_ROOT}/02_particles_colors/sprites/${name}_v${v}.png`,
+        kind: 'particle',
+        family: 'colors',
+        sizeClass: band,
+        baseScale: SILICA_SIZE_SCALE[band] * (0.92 + v * 0.04),
+      };
+    }
+  }
+  const morphs = [
+    { id: 'type1_compact', morph: 'compact' },
+    { id: 'type2_elongated', morph: 'elongated' },
+    { id: 'type3_irregular', morph: 'irregular' },
+    { id: 'type4_layered', morph: 'layered' },
+    { id: 'type5_scatter', morph: 'scattered' },
+  ];
+  for (const m of morphs) {
+    for (let v = 1; v <= 4; v++) {
+      const key = `cluster_${m.morph}_v${v}`;
+      const scale = 1.05 + (v - 1) * 0.38;
+      catalog[key] = {
+        url: `${SILICA_SPRITE_ROOT}/03_clusters/sprites/${m.id}_v${v}.png`,
+        kind: 'cluster',
+        family: 'clusters',
+        morph: m.morph,
+        sizeClass: v <= 1 ? 'S' : v === 2 ? 'M' : v === 3 ? 'L' : 'XL',
+        baseScale: scale,
+      };
+    }
+  }
+  for (let i = 1; i <= 6; i++) {
+    catalog[`detached_${i}`] = {
+      url: `${SILICA_SPRITE_ROOT}/04_detached_near_wall/sprites/detached_${i}.png`,
+      kind: 'detached',
+      family: 'detached',
+      sizeClass: 'M',
+      baseScale: 0.95,
+    };
+  }
+  for (let i = 1; i <= 6; i++) {
+    catalog[`floating_${i}`] = {
+      url: `${SILICA_SPRITE_ROOT}/05_free_floating/sprites/floating_${i}.png`,
+      kind: 'floating',
+      family: 'floating',
+      sizeClass: 'S',
+      baseScale: 0.72,
+    };
+  }
+  return catalog;
 }
+
+const SILICA_CATALOG = buildSilicaCatalog();
+
+/** One InstancedMesh layer per individual PNG variant. */
+const silicaLayers = {};
+Object.keys(SILICA_CATALOG).forEach((key) => {
+  const entry = SILICA_CATALOG[key];
+  const map = loadSilicaTexture(entry.url);
+  silicaLayers[key] = {
+    mat: new THREE.MeshBasicMaterial({
+      map,
+      color: 0xffffff,
+      transparent: true,
+      alphaTest: 0.22,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+      fog: false,
+    }),
+    mesh: null,
+    count: 0,
+    kind: entry.kind,
+    family: entry.family,
+    sizeClass: entry.sizeClass || null,
+    morph: entry.morph || null,
+    baseScale: entry.baseScale,
+  };
+});
 
 /** Shared plane for wall-mounted packing (faces column axis, not camera). */
 const silicaPlaneGeo = new THREE.PlaneGeometry(1, 1);
 
 /** Runtime counts exposed for reports / debug. */
-const silicaStats = { particles: 0, clusters: 0, instances: 0, clusterLarge: 0 };
-
-/** Instanced wall packing — one mesh per approved silica material. */
-const silicaLayers = {
-  clusterLarge: { mat: SILICA_MATS.clusterLarge, mesh: null, count: 0, kind: 'cluster' },
-  clusterMedium: { mat: SILICA_MATS.clusterMedium, mesh: null, count: 0, kind: 'cluster' },
-  clusterSmall: { mat: SILICA_MATS.clusterSmall, mesh: null, count: 0, kind: 'cluster' },
-  particleLarge: { mat: SILICA_MATS.particleLarge, mesh: null, count: 0, kind: 'particle' },
-  particleMedium: { mat: SILICA_MATS.particleMedium, mesh: null, count: 0, kind: 'particle' },
-  particleSmall: { mat: SILICA_MATS.particleSmall, mesh: null, count: 0, kind: 'particle' },
+const silicaStats = {
+  particles: 0,
+  clusters: 0,
+  detached: 0,
+  floating: 0,
+  instances: 0,
+  wallBound: 0,
+  bySize: { XS: 0, S: 0, M: 0, L: 0, XL: 0 },
+  byMorph: { compact: 0, elongated: 0, irregular: 0, layered: 0, scattered: 0 },
 };
+
 const silicaDummy = new THREE.Object3D();
-const _silicaTint = new THREE.Color();
+const _silicaCenter = new THREE.Vector3();
 
-/**
- * Dense packed-bed sample in L/R annular sectors of the cylinder.
- * Thick bed from near the track corridor out to the wall (not a thin skin at R).
- * angle 0 = +side (right), π/2 = ceiling. Mobile-phase corridor kept clear.
- */
-function samplePackedBed(sideSign) {
-  const R = GAME_CONFIG.columnRadius;
-  // Tight clear channel so L/R beds flank the blue track like the reference
-  const corridorR = GAME_CONFIG.laneWidth * 2.35;
-  const roll = rnd();
-  // Angular elevation from horizon — side masses + upper-lateral cylinder fill
-  let elev;
-  if (roll < 0.48) elev = -0.1 + rnd() * 0.75;       // mid sides (main mass)
-  else if (roll < 0.78) elev = 0.45 + rnd() * 0.8;    // upper-lateral
-  else elev = -0.55 + rnd() * 0.35;                  // lower wall above floor
-  elev = THREE.MathUtils.clamp(elev, -0.7, 1.35);
+const SIZE_KEYS = {
+  XS: ['size_XS_v1', 'size_XS_v2', 'size_XS_v3', 'size_XS_v4'],
+  S: ['size_S_v1', 'size_S_v2', 'size_S_v3', 'size_S_v4'],
+  M: ['size_M_v1', 'size_M_v2', 'size_M_v3', 'size_M_v4'],
+  L: ['size_L_v1', 'size_L_v2', 'size_L_v3', 'size_L_v4'],
+  XL: ['size_XL_v1', 'size_XL_v2', 'size_XL_v3', 'size_XL_v4'],
+};
+const COLOR_KEYS = Object.keys(SILICA_CATALOG).filter((k) => k.startsWith('color_'));
+const CLUSTER_KEYS = {
+  compact: Object.keys(SILICA_CATALOG).filter((k) => k.startsWith('cluster_compact')),
+  elongated: Object.keys(SILICA_CATALOG).filter((k) => k.startsWith('cluster_elongated')),
+  irregular: Object.keys(SILICA_CATALOG).filter((k) => k.startsWith('cluster_irregular')),
+  layered: Object.keys(SILICA_CATALOG).filter((k) => k.startsWith('cluster_layered')),
+  scattered: Object.keys(SILICA_CATALOG).filter((k) => k.startsWith('cluster_scattered')),
+};
+const DETACHED_KEYS = Object.keys(SILICA_CATALOG).filter((k) => k.startsWith('detached_'));
+const FLOATING_KEYS = Object.keys(SILICA_CATALOG).filter((k) => k.startsWith('floating_'));
+const MORPH_NAMES = ['compact', 'elongated', 'irregular', 'layered', 'scattered'];
 
-  const angle = sideSign > 0 ? elev : Math.PI - elev;
-  // Thick annular bed from near track out to wall (solid packed mass)
-  const bedRoll = rnd();
-  let radial;
-  if (bedRoll < 0.40) radial = R - (0.04 + rnd() * 1.2); // outer crust
-  else if (bedRoll < 0.82) radial = corridorR + 1.1 + rnd() * (R - corridorR - 1.8); // bulk fill
-  else radial = corridorR + 0.7 + rnd() * 1.3; // inner face of bed (near track)
-
-  let lateral = Math.cos(angle) * radial;
-  let lift = Math.sin(angle) * radial;
-
-  // Keep mobile-phase track clear — but beds hug the sides closely
-  const corridorHalf = GAME_CONFIG.laneWidth * 2.25;
-  if (Math.abs(lateral) < corridorHalf) {
-    lateral = sideSign * (corridorHalf + 0.55 + rnd() * 1.1);
-    const hyp = Math.hypot(lateral, lift) || 1;
-    const targetR = Math.max(radial, corridorHalf + 2.4);
-    lateral = (lateral / hyp) * targetR;
-    lift = (lift / hyp) * targetR;
-  }
-  // Never sit on the floor ribbon
-  if (lift < -R * 0.42) lift = -R * 0.22 + rnd() * 0.4;
-
-  return { lateral, lift, radial, angle };
+function pickFrom(arr) {
+  return arr[Math.floor(rnd() * arr.length)];
 }
 
-/** Legacy helper kept for any residual callers — routes to packed-bed sampler. */
-function sampleWallPacked(sideSign, rMin, rMax, elev = 0) {
-  const p = samplePackedBed(sideSign);
+/**
+ * Size class vs distanceAlongSpline fraction (depth cue).
+ * Near: more M/L · Mid: S/M · Far patches: XS/S dominant. XL stays rare.
+ */
+function pickSizeClass(depth01, preferSmall = false) {
+  const r = rnd();
+  if (preferSmall || depth01 > 0.72) {
+    if (r < 0.42) return 'XS';
+    if (r < 0.78) return 'S';
+    if (r < 0.96) return 'M';
+    return 'L';
+  }
+  if (depth01 < 0.28) {
+    if (r < 0.08) return 'XS';
+    if (r < 0.28) return 'S';
+    if (r < 0.68) return 'M';
+    if (r < 0.92) return 'L';
+    return 'XL';
+  }
+  // mid distance
+  if (r < 0.18) return 'XS';
+  if (r < 0.48) return 'S';
+  if (r < 0.86) return 'M';
+  if (r < 0.97) return 'L';
+  return 'XL';
+}
+
+function pickParticleKey(depth01, preferSmall = false) {
+  // Mix size family + color family so the wall is not a single tile repeat
+  if (rnd() < 0.38) return pickFrom(COLOR_KEYS);
+  return pickFrom(SIZE_KEYS[pickSizeClass(depth01, preferSmall)]);
+}
+
+function pickClusterKey(depth01) {
+  const morph = pickFrom(MORPH_NAMES);
+  const keys = CLUSTER_KEYS[morph];
+  // Prefer smaller cluster variants farther away
+  if (depth01 > 0.65) {
+    const smallish = keys.filter((k) => k.endsWith('_v1') || k.endsWith('_v2'));
+    return pickFrom(smallish.length ? smallish : keys);
+  }
+  if (depth01 < 0.3 && rnd() < 0.22) {
+    const big = keys.filter((k) => k.endsWith('_v3') || k.endsWith('_v4'));
+    return pickFrom(big.length ? big : keys);
+  }
+  return pickFrom(keys);
+}
+
+/**
+ * Column-coordinate sample for stationary-phase silica.
+ * Returns distanceAlongSpline + angleAroundColumn + radialOffset (+ derived lateral/lift).
+ *
+ * Density gradient (intentional, not uniform circumference):
+ *   HIGH   — L/R middle wall, lower side walls
+ *   MED    — outer lateral / side→lower transition
+ *   LOW    — upper peripheral
+ *   V.LOW  — ceiling
+ *
+ * Attachment:
+ *   ~82% wall-bound · ~14% slightly detached · ~4% free (rare)
+ */
+function sampleSilicaWall(sideSign) {
+  const R = GAME_CONFIG.columnRadius - 0.15; // inner face of column shell
+  const roll = rnd();
+  let elev;
+  if (roll < 0.40) elev = -0.05 + rnd() * 0.72;       // mid lateral — highest
+  else if (roll < 0.66) elev = -0.58 + rnd() * 0.42;  // lower side walls — highest
+  else if (roll < 0.84) elev = 0.55 + rnd() * 0.4;    // outer lateral / transition — medium
+  else if (roll < 0.96) elev = 0.9 + rnd() * 0.32;    // upper peripheral — low
+  else elev = 1.2 + rnd() * 0.28;                     // ceiling — very low
+  elev = THREE.MathUtils.clamp(elev, -0.62, 1.42);
+
+  const angleAroundColumn = sideSign > 0 ? elev : Math.PI - elev;
+
+  const attachRoll = rnd();
+  let radialOffset;
+  let attach;
+  if (attachRoll < 0.83) {
+    // Wall-bound / incrusted — majority touch the inner wall
+    radialOffset = 0.02 + rnd() * 0.55;
+    attach = 'wall';
+  } else if (attachRoll < 0.97) {
+    // Slightly detached but still close to the wall
+    radialOffset = 0.65 + rnd() * 1.25;
+    attach = 'detached';
+  } else {
+    // Genuinely free in mobile phase — extremely rare, keep clear of race corridor
+    radialOffset = 2.0 + rnd() * 2.4;
+    attach = 'floating';
+  }
+
+  let radial = R - radialOffset;
+  // Never collapse into the racing corridor
+  const corridorR = GAME_CONFIG.laneWidth * 2.15;
+  if (radial < corridorR + 0.85) {
+    radial = corridorR + 0.85 + rnd() * 0.6;
+    radialOffset = R - radial;
+    if (attach === 'floating' && radialOffset < 1.6) attach = 'detached';
+  }
+
+  const lateral = Math.cos(angleAroundColumn) * radial;
+  let lift = Math.sin(angleAroundColumn) * radial;
+  // Keep clear of floor ribbon / pista
+  if (lift < -R * 0.48) lift = -R * 0.28 + rnd() * 0.35;
+
+  return {
+    distanceAlongSpline: 0, // filled by caller
+    angleAroundColumn,
+    radialOffset,
+    radial,
+    lateral,
+    lift,
+    attach,
+    sideSign,
+  };
+}
+
+/** Legacy helper — routes to wall sampler. */
+function samplePackedBed(sideSign) {
+  return sampleSilicaWall(sideSign);
+}
+
+function sampleWallPacked(sideSign) {
+  const p = sampleSilicaWall(sideSign);
   return { lateral: p.lateral, lift: p.lift, r: p.radial };
 }
 
 /**
- * Place one inward-facing packing instance on a silica layer.
- * Faces the column axis so it reads as packed bed, not floating debris.
+ * Place one inward-facing silica instance in column coordinates.
+ * Position = columnCenter(distance) + polar(angle, R - radialOffset).
  */
-function placeSilicaInstance(layerKey, distance, lateral, lift, scale, tint) {
+function placeSilicaInstance(layerKey, distance, angleAroundColumn, radialOffset, scale) {
   const layer = silicaLayers[layerKey];
   const cap = layer?.mesh?.userData?.capacity ?? 0;
   if (!layer || !layer.mesh || layer.count >= cap) return false;
+
+  const R = GAME_CONFIG.columnRadius - 0.15;
+  const radial = Math.max(GAME_CONFIG.laneWidth * 2.0, R - radialOffset);
   const f = frameAt(THREE.MathUtils.clamp(distance / RACE_DISTANCE, 0, 0.999));
-  const s = scale * (0.94 + rnd() * 0.1);
+  _silicaCenter.copy(f.p).addScaledVector(f.trueUp, COLUMN_LIFT);
+
+  const s = scale * (0.94 + rnd() * 0.12);
   const idx = layer.count;
-  silicaDummy.position.copy(f.p)
-    .addScaledVector(f.side, lateral)
-    .addScaledVector(f.trueUp, lift);
+  silicaDummy.position.copy(_silicaCenter)
+    .addScaledVector(f.side, Math.cos(angleAroundColumn) * radial)
+    .addScaledVector(f.trueUp, Math.sin(angleAroundColumn) * radial);
   silicaDummy.scale.set(s, s, 1);
-  silicaDummy.lookAt(f.p);
-  silicaDummy.rotateZ((rnd() - 0.5) * 0.45);
+  silicaDummy.lookAt(_silicaCenter);
+  silicaDummy.rotateZ((rnd() - 0.5) * 0.7);
   silicaDummy.updateMatrix();
   layer.mesh.setMatrixAt(idx, silicaDummy.matrix);
-  if (tint && layer.mesh.instanceColor) {
-    _silicaTint.copy(tint);
-    layer.mesh.setColorAt(idx, _silicaTint);
-  }
   layer.count += 1;
+
   if (layer.kind === 'cluster') {
     silicaStats.clusters += 1;
-    if (layerKey === 'clusterLarge') silicaStats.clusterLarge += 1;
+    if (layer.morph && silicaStats.byMorph[layer.morph] != null) {
+      silicaStats.byMorph[layer.morph] += 1;
+    }
+  } else if (layer.kind === 'detached') {
+    silicaStats.detached += 1;
+    silicaStats.particles += 1;
+  } else if (layer.kind === 'floating') {
+    silicaStats.floating += 1;
+    silicaStats.particles += 1;
   } else {
     silicaStats.particles += 1;
   }
+  if (layer.sizeClass && silicaStats.bySize[layer.sizeClass] != null) {
+    silicaStats.bySize[layer.sizeClass] += 1;
+  }
+  if (radialOffset < 0.65) silicaStats.wallBound += 1;
   silicaStats.instances += 1;
   return true;
-}
-
-/** Clusters: small/medium common; large very rare accent. */
-function pickClusterKey() {
-  const r = rnd();
-  if (r < 0.035) return 'clusterLarge';
-  if (r < 0.42) return 'clusterMedium';
-  return 'clusterSmall';
-}
-
-function pickParticleKey(preferSmall = false) {
-  const r = rnd();
-  if (preferSmall) {
-    if (r < 0.55) return 'particleSmall';
-    if (r < 0.88) return 'particleMedium';
-    return 'particleLarge';
-  }
-  if (r < 0.22) return 'particleLarge';
-  if (r < 0.7) return 'particleMedium';
-  return 'particleSmall';
 }
 
 /**
@@ -1292,54 +1449,41 @@ function buildColumnClamps(radius) {
 }
 
 /**
- * Stationary-phase packing — mid-density wall bed (3.2.2B).
- * Midpoint between empty floating debris (~few hundred visible as space rocks)
- * and cave flood (~44k). Modest scales + wide corridor; silica frames the tube.
- *
- * Midpoint budget ~4k–5k modest sprites (~9× below cave ~44k).
- * Brief “180–240 total” cannot hit ~15–25% player-camera frame coverage
- * over 1500 m; composition follows the visual hierarchy targets instead.
- */
-/**
- * ETAPA 3.2.2 — dense chromatographic packed bed on L/R (+ upper-lateral) walls.
- * Central mobile-phase corridor stays clear. Section rings remain visible (gaps).
- * InstancedMesh only — no independent Mesh flood.
+ * ENVIRONMENT 3.2 — stationary-phase silica on INNER cylindrical walls.
+ * Individual PNG sprites placed in column coords (distance / angle / radialOffset).
+ * L/R dense, ceiling almost clear, blue wall readable between clusters.
+ * InstancedMesh only — no spritesheet texture, no world-XYZ scatter.
  */
 function buildSilicaField() {
   clearGroup(silicaGroup);
   silicaStats.particles = 0;
   silicaStats.clusters = 0;
+  silicaStats.detached = 0;
+  silicaStats.floating = 0;
   silicaStats.instances = 0;
-  silicaStats.clusterLarge = 0;
+  silicaStats.wallBound = 0;
+  Object.keys(silicaStats.bySize).forEach((k) => { silicaStats.bySize[k] = 0; });
+  Object.keys(silicaStats.byMorph).forEach((k) => { silicaStats.byMorph[k] = 0; });
   Object.keys(silicaLayers).forEach((key) => {
     silicaLayers[key].count = 0;
     silicaLayers[key].mesh = null;
   });
 
-  const mul = Math.min(1.15, qualityState.particleMul * (DEBUG_SILICA ? 1.2 : 1));
-  const debugScale = DEBUG_SILICA ? 1.06 : 1;
-  /** @type {{ key: string, distance: number, lateral: number, lift: number, scale: number, tint: THREE.Color }[]} */
+  const mul = Math.min(1.15, qualityState.particleMul * (DEBUG_SILICA ? 1.25 : 1));
+  const debugScale = DEBUG_SILICA ? 1.08 : 1;
+
+  /** @type {{ key: string, distance: number, angle: number, radialOffset: number, scale: number }[]} */
   const placements = [];
-  const queue = (key, distance, lateral, lift, scale) => {
-    placements.push({
-      key, distance, lateral, lift, scale,
-      tint: pickSilicaTint().clone(),
-    });
+  const queue = (key, distance, angle, radialOffset, scale) => {
+    placements.push({ key, distance, angle, radialOffset, scale });
   };
 
-  // Readable packed-bed scales at R=18 (compact beads, not sparse boulders)
-  const clusterScale = (key) => {
-    if (key === 'clusterLarge') return 1.55 + rnd() * 0.35;
-    if (key === 'clusterMedium') return 1.15 + rnd() * 0.28;
-    return 0.85 + rnd() * 0.25;
-  };
-  const particleScale = (size = 'medium') => {
-    if (size === 'small') return 0.48 + rnd() * 0.2;
-    if (size === 'large') return 0.85 + rnd() * 0.22;
-    return 0.62 + rnd() * 0.2;
+  const scaleFor = (key) => {
+    const layer = silicaLayers[key];
+    return (layer?.baseScale ?? 1) * (0.9 + rnd() * 0.22) * debugScale;
   };
 
-  // Leave metallic section rings readable
+  // Leave metallic arches readable through the packing
   const ringGaps = [];
   for (let i = 0; i < SECTORS.length; i++) {
     const s = SECTORS[i];
@@ -1347,77 +1491,98 @@ function buildSilicaField() {
     const mid = (s.start + s.end) * 0.5;
     if (mid > 40 && mid < RACE_DISTANCE - 40) ringGaps.push(mid);
   }
-  const nearRingGap = (d) => ringGaps.some((rd) => Math.abs(rd - d) < 5.2);
+  const nearRingGap = (d) => ringGaps.some((rd) => Math.abs(rd - d) < 4.8);
 
-  // Dense cylindrical beds — L/R mass along full spline
-  const patchStep = Math.max(0.32, 0.38 / Math.max(0.55, mul));
+  // Lateral wall patches along the spline — density leaves blue wall between formations
+  const patchStep = Math.max(0.55, 0.72 / Math.max(0.55, mul));
   outerPacked:
-  for (let d0 = 8; d0 < RACE_DISTANCE - 10; d0 += patchStep) {
-    if (nearRingGap(d0) && rnd() < 0.68) continue; // structural rings show through
+  for (let d0 = 6; d0 < RACE_DISTANCE - 8; d0 += patchStep) {
+    if (nearRingGap(d0) && rnd() < 0.55) continue;
 
     for (const sideSign of [-1, 1]) {
-      const seeds = 5 + Math.floor(rnd() * 5); // 5–9 cluster seeds / side / patch
+      // Cluster seeds with visible gaps (not a solid purple skin)
+      const seeds = 2 + Math.floor(rnd() * 3); // 2–4 formations / side / patch
       for (let s = 0; s < seeds; s++) {
-        if (placements.length > 28000) break outerPacked;
-        const base = samplePackedBed(sideSign);
-        const dd = d0 + (rnd() - 0.5) * patchStep * 0.95;
+        if (placements.length > 16000) break outerPacked;
+        const base = sampleSilicaWall(sideSign);
+        const dd = d0 + (rnd() - 0.5) * patchStep * 0.9;
+        const depth01 = dd / RACE_DISTANCE;
 
-        if (rnd() < 0.4) {
-          const key = pickClusterKey();
-          queue(key, dd, base.lateral, base.lift, clusterScale(key) * debugScale);
+        // Force attach family for seed: mostly wall-bound clusters/particles
+        let key;
+        let radialOffset = base.radialOffset;
+        if (base.attach === 'floating') {
+          key = pickFrom(FLOATING_KEYS);
+        } else if (base.attach === 'detached') {
+          key = pickFrom(DETACHED_KEYS);
+        } else if (rnd() < 0.42) {
+          key = pickClusterKey(depth01);
+          radialOffset = 0.02 + rnd() * 0.45;
         } else {
-          const pk = pickParticleKey(rnd() < 0.45);
-          const sz = pk === 'particleSmall' ? 'small' : pk === 'particleLarge' ? 'large' : 'medium';
-          queue(pk, dd, base.lateral, base.lift, particleScale(sz) * debugScale);
+          key = pickParticleKey(depth01, false);
+          radialOffset = 0.02 + rnd() * 0.5;
         }
+        queue(key, dd, base.angleAroundColumn, radialOffset, scaleFor(key));
 
-        // Tight companions → compacted bed mass on the side
-        const companions = 8 + Math.floor(rnd() * 8); // 8–15
+        // Companions in the same wall neighborhood → organic cluster mass
+        const companions = 4 + Math.floor(rnd() * 6); // 4–9
         for (let c = 0; c < companions; c++) {
-          if (rnd() > 0.95) continue;
-          const p2 = samplePackedBed(sideSign);
-          const lateral = THREE.MathUtils.lerp(base.lateral, p2.lateral, 0.25 + rnd() * 0.4);
-          const lift = THREE.MathUtils.lerp(base.lift, p2.lift, 0.25 + rnd() * 0.4);
-          const d2 = dd + (rnd() - 0.5) * 0.85;
-          if (nearRingGap(d2) && rnd() < 0.5) continue;
-          if (rnd() < 0.32) {
-            const key = rnd() < 0.7 ? 'clusterSmall' : 'clusterMedium';
-            queue(key, d2, lateral, lift, clusterScale(key) * 0.92 * debugScale);
+          if (rnd() > 0.92) continue;
+          const p2 = sampleSilicaWall(sideSign);
+          // Keep companions near the seed's wall angle (incrusted look)
+          const angle = THREE.MathUtils.lerp(
+            base.angleAroundColumn,
+            p2.angleAroundColumn,
+            0.15 + rnd() * 0.35
+          );
+          const d2 = dd + (rnd() - 0.5) * 1.1;
+          if (nearRingGap(d2) && rnd() < 0.45) continue;
+          const depth2 = d2 / RACE_DISTANCE;
+          let cKey;
+          let cOff;
+          const ar = rnd();
+          if (ar < 0.84) {
+            cKey = rnd() < 0.3 ? pickClusterKey(depth2) : pickParticleKey(depth2, rnd() < 0.55);
+            cOff = 0.02 + rnd() * 0.55;
+          } else if (ar < 0.97) {
+            cKey = pickFrom(DETACHED_KEYS);
+            cOff = 0.7 + rnd() * 1.15;
           } else {
-            queue(
-              pickParticleKey(true),
-              d2, lateral, lift,
-              particleScale(rnd() < 0.55 ? 'small' : 'medium') * debugScale
-            );
+            cKey = pickFrom(FLOATING_KEYS);
+            cOff = 2.1 + rnd() * 2.2;
           }
+          queue(cKey, d2, angle, cOff, scaleFor(cKey) * (0.85 + rnd() * 0.2));
         }
       }
     }
   }
 
-  // Background knit — tiny particles for packed-bed fill
-  const fillStep = Math.max(0.55, 0.65 / Math.max(0.55, mul));
-  for (let d0 = 10; d0 < RACE_DISTANCE - 14; d0 += fillStep) {
-    if (placements.length > 28000) break;
-    if (nearRingGap(d0) && rnd() < 0.6) continue;
+  // Sparse XS/S knit for far-wall depth (still wall-bound, L/R only)
+  const fillStep = Math.max(0.9, 1.15 / Math.max(0.55, mul));
+  for (let d0 = 10; d0 < RACE_DISTANCE - 12; d0 += fillStep) {
+    if (placements.length > 16000) break;
+    if (nearRingGap(d0) && rnd() < 0.5) continue;
     for (const sideSign of [-1, 1]) {
-      const n = 3 + Math.floor(rnd() * 4);
+      const n = 1 + Math.floor(rnd() * 3);
       for (let i = 0; i < n; i++) {
-        const p = samplePackedBed(sideSign);
+        const p = sampleSilicaWall(sideSign);
+        if (p.attach === 'floating') continue;
+        const depth01 = (d0 / RACE_DISTANCE);
+        const key = pickParticleKey(Math.max(depth01, 0.55), true);
         queue(
-          pickParticleKey(true),
-          d0 + rnd() * fillStep * 0.6,
-          p.lateral, p.lift,
-          particleScale('small') * 0.95 * debugScale
+          key,
+          d0 + rnd() * fillStep * 0.5,
+          p.angleAroundColumn,
+          0.04 + rnd() * 0.5,
+          scaleFor(key) * 0.88
         );
       }
     }
   }
 
-  // Soft budget — keep local cluster cohesion (no stride thinning)
-  const softMax = Math.floor(22000 * Math.min(1.1, mul));
+  // Soft budget — preserve local cohesion via random subset, not stride
+  const softMax = Math.floor(12000 * Math.min(1.1, mul));
   if (placements.length > softMax) {
-    // Reservoir-sample random subset so dense companion groups survive
     for (let i = placements.length - 1; i > 0; i--) {
       const j = Math.floor(rnd() * (i + 1));
       const tmp = placements[i];
@@ -1427,35 +1592,40 @@ function buildSilicaField() {
     placements.length = softMax;
   }
 
-  const counts = {
-    clusterLarge: 0, clusterMedium: 0, clusterSmall: 0,
-    particleLarge: 0, particleMedium: 0, particleSmall: 0,
-  };
-  placements.forEach((p) => { counts[p.key] += 1; });
+  /** @type {Record<string, number>} */
+  const counts = {};
+  placements.forEach((p) => { counts[p.key] = (counts[p.key] || 0) + 1; });
+
   Object.keys(silicaLayers).forEach((key) => {
-    const n = Math.max(1, counts[key] || 0);
+    const n = counts[key] || 0;
+    if (n <= 0) {
+      silicaLayers[key].mesh = null;
+      silicaLayers[key].count = 0;
+      return;
+    }
     const mesh = new THREE.InstancedMesh(silicaPlaneGeo, silicaLayers[key].mat, n);
+    mesh.name = `silica_${key}`;
     mesh.instanceMatrix.setUsage(THREE.StaticDrawUsage);
     mesh.frustumCulled = false;
-    mesh.renderOrder = 0;
+    mesh.renderOrder = 1;
     mesh.userData.capacity = n;
-    // Enable per-instance color variation
-    mesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(n * 3), 3);
     silicaLayers[key].mesh = mesh;
     silicaLayers[key].count = 0;
     silicaGroup.add(mesh);
   });
+
   placements.forEach((p) => {
-    placeSilicaInstance(p.key, p.distance, p.lateral, p.lift, p.scale, p.tint);
+    placeSilicaInstance(p.key, p.distance, p.angle, p.radialOffset, p.scale);
   });
+
   Object.keys(silicaLayers).forEach((key) => {
     const layer = silicaLayers[key];
     if (!layer.mesh) return;
     layer.mesh.count = layer.count;
     layer.mesh.instanceMatrix.needsUpdate = true;
-    if (layer.mesh.instanceColor) layer.mesh.instanceColor.needsUpdate = true;
   });
 
+  silicaGroup.name = 'silicaWallSprites';
   applyEnvironmentDebugVisibility();
 }
 
@@ -1563,147 +1733,6 @@ function applyDebugColumnGameplayHide() {
   });
 }
 
-/** Soft matcap for volumetric 3D relief beads (no scene lights required). */
-function makeMatcap() {
-  const s = 64, c = document.createElement('canvas');
-  c.width = c.height = s;
-  const g = c.getContext('2d');
-  const gr = g.createRadialGradient(s * 0.38, s * 0.32, s * 0.04, s * 0.5, s * 0.5, s * 0.52);
-  gr.addColorStop(0, '#ffffff');
-  gr.addColorStop(0.35, '#e0e0f0');
-  gr.addColorStop(0.7, '#a8a8c8');
-  gr.addColorStop(1, '#50507a');
-  g.fillStyle = gr;
-  g.fillRect(0, 0, s, s);
-  const t = new THREE.CanvasTexture(c);
-  t.colorSpace = THREE.SRGBColorSpace;
-  return t;
-}
-
-/**
- * Stamp atlas from assets/environment/silica/* (3×2).
- * silica-back.png is a L/R composition, not a cell grid — use the stamp sheet.
- */
-const SHEET_URL = './assets/silica-stamps-sheet.png';
-const SHEET_COLS = 3;
-const SHEET_ROWS = 2;
-
-const wallMat2 = new THREE.MeshBasicMaterial({
-  color: 0x140f3d,
-  side: THREE.DoubleSide,
-  fog: false,
-  transparent: true,
-  alphaTest: 0.08,
-});
-
-function bakeWallTexture(img) {
-  const W = 1024, H = 512;
-  const c = document.createElement('canvas');
-  c.width = W; c.height = H;
-  const g = c.getContext('2d');
-  g.imageSmoothingEnabled = false;
-  g.fillStyle = '#140f3d';
-  g.fillRect(0, 0, W, H);
-
-  const cw = img.width / SHEET_COLS;
-  const ch = img.height / SHEET_ROWS;
-  const stamps = [];
-  for (let i = 0; i < 1200; i++) {
-    stamps.push({
-      x: Math.random() * W,
-      y: Math.random() * H,
-      s: 28 + Math.pow(Math.random(), 2) * 140,
-      cell: (Math.random() * SHEET_COLS * SHEET_ROWS) | 0,
-    });
-  }
-  stamps.sort((a, b) => a.s - b.s); // grandes por cima
-
-  for (const st of stamps) {
-    const sx = (st.cell % SHEET_COLS) * cw;
-    const sy = Math.floor(st.cell / SHEET_COLS) * ch;
-    for (const ox of [-W, 0, W]) for (const oy of [-H, 0, H]) {
-      const dx = st.x + ox - st.s / 2;
-      const dy = st.y + oy - st.s / 2;
-      if (dx > W || dy > H || dx + st.s < 0 || dy + st.s < 0) continue;
-      g.drawImage(img, sx, sy, cw, ch, dx, dy, st.s, st.s);
-    }
-  }
-
-  const t = new THREE.CanvasTexture(c);
-  t.colorSpace = THREE.SRGBColorSpace;
-  t.wrapS = t.wrapT = THREE.RepeatWrapping;
-  t.magFilter = THREE.NearestFilter;
-  t.minFilter = THREE.NearestFilter;
-  t.repeat.set(RACE_DISTANCE / 48, 1);
-  wallMat2.color.set(0xffffff);
-  wallMat2.map = t;
-  wallMat2.needsUpdate = true;
-}
-
-const sheetImg = new Image();
-sheetImg.onload = () => bakeWallTexture(sheetImg);
-sheetImg.src = SHEET_URL;
-
-/**
- * Lateral silica wall strip — ceiling + floor stay open (mobile phase / frames).
- * sideSign +1 = right, -1 = left.
- */
-function buildLateralSilicaWall(sideSign) {
-  const R = GAME_CONFIG.columnRadius + 1.6;
-  const segments = qualityState.mode === 'low' ? 160 : 280;
-  const elevBands = qualityState.mode === 'low' ? 6 : 10;
-  // Angles relative to lifted column center — reach pista, leave crown open
-  const pistaLift = (GAME_CONFIG.lowerBeamHeight ?? -1.25) + 0.4;
-  const elev0 = Math.asin(THREE.MathUtils.clamp((pistaLift - COLUMN_LIFT) / R, -0.99, 0.99));
-  const elev1 = 0.72; // stop before ceiling so frames / mobile-phase crown stay readable
-  const positions = [];
-  const uvs = [];
-  const indices = [];
-  const normals = [];
-  const _n = new THREE.Vector3();
-
-  for (let i = 0; i <= segments; i++) {
-    const t = Math.min(0.999, i / segments);
-    const f = frameAt(t);
-    const u = (i / segments) * (RACE_DISTANCE / 48);
-    for (let j = 0; j <= elevBands; j++) {
-      const v = j / elevBands;
-      const elev = elev0 + (elev1 - elev0) * v;
-      const a = sideSign > 0 ? elev : Math.PI - elev;
-      const p = f.p.clone()
-        .addScaledVector(f.trueUp, COLUMN_LIFT)
-        .addScaledVector(f.side, Math.cos(a) * R)
-        .addScaledVector(f.trueUp, Math.sin(a) * R);
-      positions.push(p.x, p.y, p.z);
-      _n.copy(f.side).multiplyScalar(-Math.cos(a))
-        .addScaledVector(f.trueUp, -Math.sin(a))
-        .normalize();
-      normals.push(_n.x, _n.y, _n.z);
-      uvs.push(u, v);
-      if (i < segments && j < elevBands) {
-        const a0 = i * (elevBands + 1) + j;
-        const a1 = a0 + 1;
-        const b0 = (i + 1) * (elevBands + 1) + j;
-        const b1 = b0 + 1;
-        indices.push(a0, b0, a1, a1, b0, b1);
-      }
-    }
-  }
-
-  const geoWall = new THREE.BufferGeometry();
-  geoWall.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-  geoWall.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
-  geoWall.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
-  geoWall.setIndex(indices);
-  geoWall.computeBoundingSphere();
-
-  const mesh = new THREE.Mesh(geoWall, wallMat2);
-  mesh.name = sideSign > 0 ? 'silicaWallR' : 'silicaWallL';
-  mesh.renderOrder = -2;
-  mesh.frustumCulled = false;
-  return mesh;
-}
-
 function buildEnvironment() {
   clearGroup(envGroup);
   clearGroup(silicaGroup);
@@ -1711,67 +1740,23 @@ function buildEnvironment() {
   seed = 1337;
   buildColumnStructure();
 
-  // Dark outer shell for enclosure depth (no silica on ceiling/floor)
+  // Dark/blue outer shell — silica sprites sit on the INNER face; ceiling/floor stay open
   const wallPts = [];
   for (let i = 0; i <= 200; i++) {
     const f = frameAt(i / 200);
     wallPts.push(f.p.clone().addScaledVector(f.trueUp, COLUMN_LIFT));
   }
   const shell = new THREE.Mesh(
-    new THREE.TubeGeometry(new THREE.CatmullRomCurve3(wallPts), 400, GAME_CONFIG.columnRadius + 1.85, 20, false),
-    new THREE.MeshBasicMaterial({ color: 0x0c0a28, side: THREE.BackSide, fog: false })
+    new THREE.TubeGeometry(new THREE.CatmullRomCurve3(wallPts), 400, GAME_CONFIG.columnRadius + 0.35, 24, false),
+    new THREE.MeshBasicMaterial({ color: 0x143a78, side: THREE.BackSide, fog: false })
   );
   shell.name = 'columnWall';
   shell.renderOrder = -3;
   envGroup.add(shell);
 
-  // Lateral packed-bed walls from spritesheet stamps; ceiling/floor stay clear
+  // Stationary phase: individual silica PNG sprites on L/R inner walls (column coords)
   if (!DEBUG_COLUMN && !DEBUG_DETECTOR) {
-    envGroup.add(buildLateralSilicaWall(1));
-    envGroup.add(buildLateralSilicaWall(-1));
-  }
-
-  // Sparse 3D matcap beads for near-field relief — lateral walls only
-  if (!DEBUG_COLUMN && !DEBUG_DETECTOR) {
-    const palette = [0x8f5cf0, 0xa57bff, 0x7a4de0, 0xb0acd0, 0x9a96bd].map((c) => new THREE.Color(c));
-    const beadCount = Math.floor(1200 * qualityState.particleMul);
-    const beads = new THREE.InstancedMesh(
-      new THREE.SphereGeometry(1, 10, 8),
-      new THREE.MeshMatcapMaterial({ matcap: makeMatcap(), fog: false }),
-      beadCount
-    );
-    beads.name = 'silicaBeads';
-    beads.frustumCulled = false;
-    const m4 = new THREE.Matrix4();
-    const q = new THREE.Quaternion();
-    const sc = new THREE.Vector3();
-    let placed = 0;
-    let guard = 0;
-    while (placed < beadCount && guard < beadCount * 6) {
-      guard += 1;
-      const d = 10 + rnd() * (RACE_DISTANCE - 20);
-      const f = frameAt(d / RACE_DISTANCE);
-      const sideSign = rnd() < 0.5 ? 1 : -1;
-      const pistaLift = (GAME_CONFIG.lowerBeamHeight ?? -1.25) + 0.5;
-      const Rwall = GAME_CONFIG.columnRadius + 0.7;
-      const elev0 = Math.asin(THREE.MathUtils.clamp((pistaLift - COLUMN_LIFT) / Rwall, -0.99, 0.99));
-      const elev = elev0 + rnd() * (0.72 - elev0);
-      const a = sideSign > 0 ? elev : Math.PI - elev;
-      const r = GAME_CONFIG.columnRadius + 0.7 - rnd() * 1.3;
-      const p = f.p.clone()
-        .addScaledVector(f.trueUp, COLUMN_LIFT)
-        .addScaledVector(f.side, Math.cos(a) * r)
-        .addScaledVector(f.trueUp, Math.sin(a) * r);
-      const s = 0.4 + Math.pow(rnd(), 2.5) * 0.8;
-      m4.compose(p, q, sc.set(s, s, s));
-      beads.setMatrixAt(placed, m4);
-      beads.setColorAt(placed, palette[Math.floor(rnd() * palette.length)]);
-      placed += 1;
-    }
-    beads.count = placed;
-    beads.instanceMatrix.needsUpdate = true;
-    if (beads.instanceColor) beads.instanceColor.needsUpdate = true;
-    envGroup.add(beads);
+    buildSilicaField();
   }
 
   // Skip futuristic infra clutter — armature carries structure
@@ -2977,7 +2962,8 @@ window.CHROMARACERS = {
     s.children.forEach((c) => { if (c.name === 'columnFramePerforated') n += 1; });
     return n;
   },
-  silicaBeadCount: () => envGroup.getObjectByName('silicaBeads')?.count ?? 0,
-  hasLateralSilica: () => !!(envGroup.getObjectByName('silicaWallL') && envGroup.getObjectByName('silicaWallR')),
-  wallTextureReady: () => !!wallMat2?.map,
+  silicaBeadCount: () => 0,
+  hasLateralSilica: () => silicaStats.instances > 0,
+  silicaWallReady: () => silicaStats.instances > 0,
+  silicaSpriteVariantCount: () => Object.keys(SILICA_CATALOG).length,
 };

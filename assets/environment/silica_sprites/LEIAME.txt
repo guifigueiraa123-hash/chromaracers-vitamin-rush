@@ -1,0 +1,16 @@
+SILICA SPRITES - extraidos da imagem de referencia (recorte 1:1, sem redimensionar)
+
+Cada pasta = um item da imagem:
+  01_particles_sizes        20  (XS,S,M,L,XL x 4 variacoes)
+  02_particles_colors       20  (A lavanda, B lavanda escuro, C cinza-violeta, D cinza-violeta claro, E misto x 4)
+  03_clusters               20  (tipo 1 a 5 x 4 tamanhos)
+  04_detached_near_wall      6
+  05_free_floating           6
+  06_depth_variations        6  (100%, 80%, 66%, 40%, 25%, 15%)
+  07_alpha_masks             7  (branco = opaco; *_rgba.png e *_gray.png)
+  08_rotation_variations    11
+  09_mixed_set_atlas        71  (melhor esforco: fundo de nevoa; alguns grupos grandes saem unidos)
+
+Cada pasta tem: spritesheet.png (grade, celulas uniformes, fundo transparente),
+atlas.json (posicao x,y,w,h de cada frame) e sprites/ (um PNG por sprite, recorte justo).
+Resolucao: a imagem de origem tem 1672x941, entao cada esfera tem ~10 a 100 px. Nada foi ampliado.
