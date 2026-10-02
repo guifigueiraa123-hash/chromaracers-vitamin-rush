@@ -21,8 +21,16 @@ const GAME_CONFIG = {
     baseFov: 64,
     boostFov: 72,
   },
-  // Narrower HPLC tunnel for denser packed-bed read
+  // HPLC column containment radius (arch major radius)
   columnRadius: 7.5,
+  /** Etapa 3.2.1 — structural frame parameters (geometry only). */
+  columnLength: 1500, // matches raceDistance; frames span this length
+  frameSpacing: 18,
+  frameThickness: 0.36,
+  longitudinalBeamCount: 7,
+  longitudinalBeamThickness: 0.26,
+  lowerBeamHeight: -1.25, // track-level lateral rails (trueUp lift)
+  lowerBeamThickness: 0.34,
   leaderboardKey: 'chromaracers_vitamin_rush_lb_v1',
   maxLeaderboard: 10,
   character: 'Vita C',
@@ -654,7 +662,7 @@ mats.columnClampAccent = new THREE.MeshBasicMaterial({
   depthWrite: false,
   fog: false,
 });
-/** Thick section rings — structural blue, heavier than the thin wall membrane. */
+/** Thick section rings — kept for optional debug; etapa 3.2.1 uses open frames. */
 mats.columnSectionRing = new THREE.MeshBasicMaterial({
   color: 0x2a6aa8,
   transparent: true,
@@ -669,6 +677,19 @@ mats.columnSectionRingCore = new THREE.MeshBasicMaterial({
   opacity: 0.7,
   side: THREE.DoubleSide,
   depthWrite: false,
+  fog: false,
+});
+/** Etapa 3.2.1 — steel-blue structural members (no emissive / bloom). */
+mats.columnFrame = new THREE.MeshBasicMaterial({
+  color: 0x1a3a68,
+  fog: false,
+});
+mats.columnFrameAccent = new THREE.MeshBasicMaterial({
+  color: 0x245288,
+  fog: false,
+});
+mats.columnLowerBeam = new THREE.MeshBasicMaterial({
+  color: 0x163458,
   fog: false,
 });
 
@@ -899,44 +920,149 @@ function pickParticleKey(preferSmall = false) {
 }
 
 /**
- * Phase A.1 — continuous TubeGeometry inner wall + thick section rings.
- * Wall stays a continuous glass membrane; concentric rings delimit SECTORS.
+ * Etapa 3.2.1 — open arch frame in local column coordinates.
+ * Local X = side, Y = trueUp, Z = tangent.
+ * Feet land on the L/R pista rails; arch rises through the sides/ceiling.
+ * Nothing continues below the race surface.
  */
-function buildColumnStructure() {
-  const tubularSegments = Math.floor(520 * (qualityState.mode === 'low' ? 0.55 : 1));
-  const radial = qualityState.mode === 'low' ? 36 : 64;
-  const R = GAME_CONFIG.columnRadius;
+function createArchFrameGeometry(radius, tubeRadius, floorLift) {
+  const halfW = GAME_CONFIG.laneWidth * 2.35;
+  // Key points: right rail → right wall → ceiling → left wall → left rail
+  const keys = [
+    new THREE.Vector3(halfW, floorLift, 0),
+    new THREE.Vector3(radius * 0.92, floorLift + (radius - floorLift) * 0.28, 0),
+    new THREE.Vector3(radius, radius * 0.42, 0),
+    new THREE.Vector3(radius * 0.72, radius * 0.88, 0),
+    new THREE.Vector3(0, radius, 0),
+    new THREE.Vector3(-radius * 0.72, radius * 0.88, 0),
+    new THREE.Vector3(-radius, radius * 0.42, 0),
+    new THREE.Vector3(-radius * 0.92, floorLift + (radius - floorLift) * 0.28, 0),
+    new THREE.Vector3(-halfW, floorLift, 0),
+  ];
+  const archCurve = new THREE.CatmullRomCurve3(keys, false, 'catmullrom', 0.15);
+  const pathSegs = qualityState.mode === 'low' ? 28 : 48;
+  const radial = qualityState.mode === 'low' ? 5 : 8;
+  const geoArch = new THREE.TubeGeometry(archCurve, pathSegs, tubeRadius, radial, false);
+  // Approximate angular span for longitudinal beam placement (circle-space)
+  const theta = Math.asin(THREE.MathUtils.clamp(floorLift / radius, -0.99, 0.99));
+  geoArch.userData.archAngles = { a0: theta, a1: Math.PI - theta, theta, halfW };
+  return geoArch;
+}
 
-  // Single continuous inner wall — opaque BackSide; player is inside the HPLC column
-  const innerGeo = new THREE.TubeGeometry(curve, tubularSegments, R, radial, false);
-  const wallMesh = new THREE.Mesh(innerGeo, mats.columnWall);
-  wallMesh.name = 'columnWall';
-  wallMesh.renderOrder = -2;
-  envGroup.add(wallMesh);
-
-  // Thick concentric arcs at sector boundaries — heavier than the thin wall
-  buildColumnSectionRings(R);
+/** Basis matrix: local +X→side, +Y→trueUp, +Z→tangent. */
+function columnFrameBasis(f, out = new THREE.Matrix4()) {
+  return out.makeBasis(f.side, f.trueUp, f.tangent);
 }
 
 /**
- * Concentric section rings along the spline.
- * Tube thickness >> wall membrane so they clearly delimit column sections.
- * Fully inset so the bulk reads inside the opaque BackSide wall.
+ * Etapa 3.2.1 — containment armature (NOT a continuous cylinder).
+ * Transversal open arches + longitudinal beams + L/R lower rails at pista level.
+ * Spaces between members are reserved for future silica (3.2.2) — left empty here.
+ */
+function buildColumnStructure() {
+  const R = GAME_CONFIG.columnRadius;
+  const length = GAME_CONFIG.columnLength || RACE_DISTANCE;
+  const spacing = Math.max(8, GAME_CONFIG.frameSpacing || 18);
+  const frameThick = GAME_CONFIG.frameThickness || 0.36;
+  const beamThick = GAME_CONFIG.longitudinalBeamThickness || 0.26;
+  const lowerThick = GAME_CONFIG.lowerBeamThickness || 0.34;
+  const floorLift = GAME_CONFIG.lowerBeamHeight ?? -1.25;
+  const lowMul = qualityState.mode === 'low' ? 0.65 : 1;
+  const frameCount = Math.max(12, Math.floor((length / spacing) * lowMul));
+
+  const structure = new THREE.Group();
+  structure.name = 'columnStructure';
+
+  // --- Transversal curved frames (shared geometry, InstancedMesh) ---
+  const archGeo = createArchFrameGeometry(R, frameThick * 0.5, floorLift);
+  const { a0, a1 } = archGeo.userData.archAngles;
+  const frames = new THREE.InstancedMesh(archGeo, mats.columnFrame, frameCount);
+  frames.name = 'columnFrames';
+  frames.frustumCulled = false;
+  frames.instanceMatrix.setUsage(THREE.StaticDrawUsage);
+
+  const dummy = new THREE.Object3D();
+  const basis = new THREE.Matrix4();
+  const startD = 8;
+  const endD = Math.min(length, DETECTOR_DISTANCE) - 6;
+  for (let i = 0; i < frameCount; i++) {
+    const d = startD + (i / Math.max(1, frameCount - 1)) * (endD - startD);
+    const f = frameAt(THREE.MathUtils.clamp(d / RACE_DISTANCE, 0, 0.999));
+    dummy.position.copy(f.p);
+    dummy.quaternion.setFromRotationMatrix(columnFrameBasis(f, basis));
+    dummy.scale.set(1, 1, 1);
+    dummy.updateMatrix();
+    frames.setMatrixAt(i, dummy.matrix);
+  }
+  frames.instanceMatrix.needsUpdate = true;
+  structure.add(frames);
+
+  // --- Longitudinal beams connecting arches (along upper/side shell) ---
+  const beamCount = Math.max(3, Math.floor((GAME_CONFIG.longitudinalBeamCount || 7) * lowMul));
+  const beamSegs = qualityState.mode === 'low' ? 100 : 180;
+  for (let bi = 0; bi < beamCount; bi++) {
+    const a = a0 + (a1 - a0) * (bi / Math.max(1, beamCount - 1));
+    // Skip pure bottom feet — lower rails handle pista-level edges
+    if (Math.sin(a) < floorLift / R + 0.08) continue;
+    const pts = [];
+    for (let i = 0; i <= beamSegs; i++) {
+      const t = THREE.MathUtils.clamp(i / beamSegs, 0, 0.999);
+      const f = frameAt(t);
+      pts.push(
+        f.p.clone()
+          .addScaledVector(f.side, Math.cos(a) * R)
+          .addScaledVector(f.trueUp, Math.sin(a) * R)
+      );
+    }
+    const beamCurve = new THREE.CatmullRomCurve3(pts, false, 'catmullrom', 0.12);
+    const beamGeo = new THREE.TubeGeometry(beamCurve, beamSegs, beamThick * 0.5, 5, false);
+    const beam = new THREE.Mesh(beamGeo, bi % 2 === 0 ? mats.columnFrame : mats.columnFrameAccent);
+    beam.name = 'columnLongitudinalBeam';
+    beam.frustumCulled = false;
+    structure.add(beam);
+  }
+
+  // --- Lower L/R rails at pista level (silica bed floor limit; never cross center) ---
+  const corridorHalf = GAME_CONFIG.laneWidth * 2.35;
+  const railSegs = qualityState.mode === 'low' ? 100 : 180;
+  for (const sideSign of [-1, 1]) {
+    const pts = [];
+    for (let i = 0; i <= railSegs; i++) {
+      const t = THREE.MathUtils.clamp(i / railSegs, 0, 0.999);
+      const f = frameAt(t);
+      pts.push(
+        f.p.clone()
+          .addScaledVector(f.side, sideSign * corridorHalf)
+          .addScaledVector(f.trueUp, floorLift)
+      );
+    }
+    const railCurve = new THREE.CatmullRomCurve3(pts, false, 'catmullrom', 0.12);
+    const railGeo = new THREE.TubeGeometry(railCurve, railSegs, lowerThick * 0.5, 6, false);
+    const rail = new THREE.Mesh(railGeo, mats.columnLowerBeam);
+    rail.name = sideSign > 0 ? 'columnLowerBeamR' : 'columnLowerBeamL';
+    rail.frustumCulled = false;
+    structure.add(rail);
+  }
+
+  envGroup.add(structure);
+}
+
+/**
+ * Legacy full-circle section rings — unused in 3.2.1 (open arches replace them).
+ * Kept so older debug callers do not break if re-enabled.
  */
 function buildColumnSectionRings(wallRadius) {
-  // Sector boundaries (+ mid-sector markers so sections read clearly in-camera)
   const distances = [];
   for (let i = 0; i < SECTORS.length; i++) {
     const s = SECTORS[i];
-    if (i > 0) distances.push(s.start); // boundary
+    if (i > 0) distances.push(s.start);
     const mid = (s.start + s.end) * 0.5;
     if (mid > 40 && mid < RACE_DISTANCE - 40) distances.push(mid);
   }
   distances.sort((a, b) => a - b);
 
-  // Thick torus fully inside the cylinder (wall is a thin membrane at R)
   const tubeR = qualityState.mode === 'low' ? 1.05 : 1.35;
-  const majorR = wallRadius - tubeR * 0.85; // keep outer edge ~inside the wall
+  const majorR = wallRadius - tubeR * 0.85;
 
   for (let i = 0; i < distances.length; i++) {
     const d = distances[i];
@@ -958,7 +1084,6 @@ function buildColumnSectionRings(wallRadius) {
 
     ring.add(bulk, core);
     ring.position.copy(f.p);
-    // Torus default plane is XY; align so ring is perpendicular to path tangent
     ring.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), f.tangent);
     envGroup.add(ring);
   }
@@ -1292,47 +1417,13 @@ function buildEnvironment() {
   clearGroup(silicaGroup);
   clearGroup(infraGroup);
   seed = 1337;
+  // Etapa 3.2.1 — physical containment armature only (no silica / particles).
   buildColumnStructure();
 
-  // Dense purple/gray silica beads — 1 InstancedMesh draw call
-  if (!DEBUG_COLUMN && !DEBUG_DETECTOR) {
-    const palette = [0x6d3fd6, 0x8a5ae8, 0x5b34b8, 0x8a86a8, 0xa9a4c8].map((c) => new THREE.Color(c));
-    const beadCount = Math.floor(1800 * qualityState.particleMul);
-    const beads = new THREE.InstancedMesh(
-      geo.sphereM,
-      new THREE.MeshStandardMaterial({
-        roughness: 0.8,
-        flatShading: true,
-        emissive: 0x1a1040,
-        emissiveIntensity: 0.3,
-        vertexColors: true,
-      }),
-      beadCount
-    );
-    beads.name = 'silicaBeads';
-    beads.frustumCulled = false;
-    const m4 = new THREE.Matrix4();
-    const q = new THREE.Quaternion();
-    const sc = new THREE.Vector3();
-    for (let i = 0; i < beadCount; i++) {
-      const d = 10 + rnd() * (RACE_DISTANCE - 20);
-      const f = frameAt(d / RACE_DISTANCE);
-      const a = rnd() * Math.PI * 2;
-      const r = GAME_CONFIG.columnRadius - 0.3 - rnd() * 1.4;
-      const p = f.p.clone()
-        .addScaledVector(f.side, Math.cos(a) * r)
-        .addScaledVector(f.trueUp, Math.sin(a) * r);
-      const s = 0.3 + Math.pow(rnd(), 2.5) * 1.5; // muitas pequenas, poucas gigantes
-      m4.compose(p, q, sc.set(s, s, s));
-      beads.setMatrixAt(i, m4);
-      beads.setColorAt(i, palette[Math.floor(rnd() * palette.length)]);
-    }
-    beads.instanceMatrix.needsUpdate = true;
-    if (beads.instanceColor) beads.instanceColor.needsUpdate = true;
-    envGroup.add(beads);
-  }
+  // Etapa 3.2.2 will fill Region B (between frames) with stationary-phase beads.
+  // Intentionally omitted here so the steel-blue geometry can be judged alone.
 
-  // Phase 1: skip futuristic infra clutter — rings + shell carry structure
+  // Skip futuristic infra clutter — armature carries structure
   if (!DEBUG_COLUMN && !DEBUG_DETECTOR && !DEBUG_SILICA && !VISUAL_PHASE1_COMPOSITION) {
     buildInfrastructure();
   }
@@ -1628,7 +1719,8 @@ function updateColumnAtmosphere(dt, boosting) {
   const turbulent = sector?.name === 'TURBULÊNCIA';
   const turbPulse = turbulent ? 1 + Math.sin(state.elapsed * 5.5) * 0.12 : 1;
 
-  scene.fog.density = (sector?.fog ?? 0.009) * 2.4 * (boosting ? 0.85 : 1);
+  // Etapa 3.2.1: keep fog light enough that successive arches read in perspective
+  scene.fog.density = (sector?.fog ?? 0.009) * 1.15 * (boosting ? 0.85 : 1);
   scene.background.lerp(new THREE.Color(profile.tint), 0.04);
   columnFill.intensity = 0.28 + profile.flow * 0.12 + (boosting ? 0.18 : 0) + (turbulent ? 0.1 : 0);
 
@@ -2523,4 +2615,7 @@ window.CHROMARACERS = {
   silicaStats, silicaGroup, flowGroup, envGroup, detectorGroup, infraGroup,
   snapCameraToPlayer, applyEnvironmentDebugVisibility, applyDebugColumnGameplayHide,
   placeDetector, updateDetectorApproach,
+  hasColumnWall: () => !!envGroup.getObjectByName('columnWall'),
+  hasColumnFrames: () => !!envGroup.getObjectByName('columnFrames'),
+  columnFrameCount: () => envGroup.getObjectByName('columnFrames')?.count ?? 0,
 };
