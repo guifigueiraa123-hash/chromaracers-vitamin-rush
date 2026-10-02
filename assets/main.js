@@ -996,13 +996,12 @@ function buildColumnStructure() {
   frames.instanceMatrix.needsUpdate = true;
   structure.add(frames);
 
-  // --- Longitudinal beams on the same arch circle (skip feet — lower rails) ---
-  const beamCount = Math.max(3, Math.floor((GAME_CONFIG.longitudinalBeamCount || 9) * lowMul));
+  // --- Ceiling longitudinal beams only (skip crown center + all side/lower lines) ---
+  // Keep the two near-top horizontals; remove middle ceiling line and wall beams.
+  const ceilingUs = [0.38, 0.62];
   const beamSegs = qualityState.mode === 'low' ? 100 : 180;
-  for (let bi = 0; bi < beamCount; bi++) {
-    const u = bi / Math.max(1, beamCount - 1);
-    // Keep clear of feet so L/R lower rails own the pista edge
-    if (u < 0.06 || u > 0.94) continue;
+  for (let bi = 0; bi < ceilingUs.length; bi++) {
+    const u = ceilingUs[bi];
     const a = a0 + (a1 - a0) * u;
     const localX = Math.cos(a) * rr;
     const localY = cy + Math.sin(a) * rr;
