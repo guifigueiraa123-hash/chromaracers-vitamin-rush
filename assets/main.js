@@ -1493,22 +1493,29 @@ function buildSilicaField() {
   }
   const nearRingGap = (d) => ringGaps.some((rd) => Math.abs(rd - d) < 4.8);
 
-  // Lateral wall patches along the spline — density leaves blue wall between formations
-  const patchStep = Math.max(0.55, 0.72 / Math.max(0.55, mul));
-  outerPacked:
-  for (let d0 = 6; d0 < RACE_DISTANCE - 8; d0 += patchStep) {
-    if (nearRingGap(d0) && rnd() < 0.55) continue;
+  // Budget spans the FULL race — early break previously starved mid/far walls.
+  const softMax = Math.floor(14000 * Math.min(1.1, mul));
+  const patchStep = Math.max(1.05, 1.35 / Math.max(0.55, mul));
+  const span = Math.max(1, RACE_DISTANCE - 16);
+  const patchCount = Math.ceil(span / patchStep);
+  // ~70% of budget for cluster formations, rest for XS/S knit
+  const perPatch = Math.max(6, Math.floor((softMax * 0.72) / patchCount));
 
+  for (let pi = 0; pi < patchCount; pi++) {
+    const d0 = 6 + pi * patchStep;
+    if (d0 >= RACE_DISTANCE - 8) break;
+    if (nearRingGap(d0) && rnd() < 0.45) continue;
+
+    let placedHere = 0;
     for (const sideSign of [-1, 1]) {
-      // Cluster seeds with visible gaps (not a solid purple skin)
-      const seeds = 2 + Math.floor(rnd() * 3); // 2–4 formations / side / patch
+      // 1–2 formations / side so blue wall stays readable between clusters
+      const seeds = 1 + (rnd() < 0.55 ? 1 : 0);
       for (let s = 0; s < seeds; s++) {
-        if (placements.length > 16000) break outerPacked;
+        if (placedHere >= perPatch) break;
         const base = sampleSilicaWall(sideSign);
-        const dd = d0 + (rnd() - 0.5) * patchStep * 0.9;
+        const dd = d0 + (rnd() - 0.5) * patchStep * 0.85;
         const depth01 = dd / RACE_DISTANCE;
 
-        // Force attach family for seed: mostly wall-bound clusters/particles
         let key;
         let radialOffset = base.radialOffset;
         if (base.attach === 'floating') {
@@ -1523,20 +1530,21 @@ function buildSilicaField() {
           radialOffset = 0.02 + rnd() * 0.5;
         }
         queue(key, dd, base.angleAroundColumn, radialOffset, scaleFor(key));
+        placedHere += 1;
 
-        // Companions in the same wall neighborhood → organic cluster mass
-        const companions = 4 + Math.floor(rnd() * 6); // 4–9
+        // Companions hug the seed → incrusted wall mass with gaps between groups
+        const companions = 3 + Math.floor(rnd() * 4); // 3–6
         for (let c = 0; c < companions; c++) {
-          if (rnd() > 0.92) continue;
+          if (placedHere >= perPatch) break;
+          if (rnd() > 0.9) continue;
           const p2 = sampleSilicaWall(sideSign);
-          // Keep companions near the seed's wall angle (incrusted look)
           const angle = THREE.MathUtils.lerp(
             base.angleAroundColumn,
             p2.angleAroundColumn,
-            0.15 + rnd() * 0.35
+            0.12 + rnd() * 0.32
           );
-          const d2 = dd + (rnd() - 0.5) * 1.1;
-          if (nearRingGap(d2) && rnd() < 0.45) continue;
+          const d2 = dd + (rnd() - 0.5) * 1.0;
+          if (nearRingGap(d2) && rnd() < 0.4) continue;
           const depth2 = d2 / RACE_DISTANCE;
           let cKey;
           let cOff;
@@ -1552,22 +1560,28 @@ function buildSilicaField() {
             cOff = 2.1 + rnd() * 2.2;
           }
           queue(cKey, d2, angle, cOff, scaleFor(cKey) * (0.85 + rnd() * 0.2));
+          placedHere += 1;
         }
       }
     }
   }
 
-  // Sparse XS/S knit for far-wall depth (still wall-bound, L/R only)
-  const fillStep = Math.max(0.9, 1.15 / Math.max(0.55, mul));
+  // Sparse XS/S knit along full length for far-wall depth (still L/R wall-bound)
+  const fillBudget = Math.floor(softMax * 0.28);
+  const fillStep = Math.max(1.4, 1.8 / Math.max(0.55, mul));
+  const fillCount = Math.ceil(span / fillStep);
+  const perFill = Math.max(1, Math.floor(fillBudget / Math.max(1, fillCount * 2)));
+  let fillPlaced = 0;
   for (let d0 = 10; d0 < RACE_DISTANCE - 12; d0 += fillStep) {
-    if (placements.length > 16000) break;
-    if (nearRingGap(d0) && rnd() < 0.5) continue;
+    if (fillPlaced >= fillBudget) break;
+    if (nearRingGap(d0) && rnd() < 0.4) continue;
     for (const sideSign of [-1, 1]) {
-      const n = 1 + Math.floor(rnd() * 3);
+      const n = Math.min(perFill, 1 + Math.floor(rnd() * 2));
       for (let i = 0; i < n; i++) {
+        if (fillPlaced >= fillBudget) break;
         const p = sampleSilicaWall(sideSign);
         if (p.attach === 'floating') continue;
-        const depth01 = (d0 / RACE_DISTANCE);
+        const depth01 = d0 / RACE_DISTANCE;
         const key = pickParticleKey(Math.max(depth01, 0.55), true);
         queue(
           key,
@@ -1576,20 +1590,21 @@ function buildSilicaField() {
           0.04 + rnd() * 0.5,
           scaleFor(key) * 0.88
         );
+        fillPlaced += 1;
       }
     }
   }
 
-  // Soft budget — preserve local cohesion via random subset, not stride
-  const softMax = Math.floor(12000 * Math.min(1.1, mul));
   if (placements.length > softMax) {
-    for (let i = placements.length - 1; i > 0; i--) {
-      const j = Math.floor(rnd() * (i + 1));
-      const tmp = placements[i];
-      placements[i] = placements[j];
-      placements[j] = tmp;
+    // Distance-stratified trim — keep coverage along the full spline
+    placements.sort((a, b) => a.distance - b.distance);
+    const keep = [];
+    const stride = placements.length / softMax;
+    for (let i = 0; i < softMax; i++) {
+      keep.push(placements[Math.min(placements.length - 1, Math.floor(i * stride + rnd() * stride * 0.35))]);
     }
-    placements.length = softMax;
+    placements.length = 0;
+    keep.forEach((p) => placements.push(p));
   }
 
   /** @type {Record<string, number>} */
