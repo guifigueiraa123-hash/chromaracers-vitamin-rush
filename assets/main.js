@@ -21,8 +21,8 @@ const GAME_CONFIG = {
     baseFov: 64,
     boostFov: 72,
   },
-  // Internal diameter ≈ 8–12 character heights (Vita ~1 unit); R=18 reads as large HPLC column
-  columnRadius: 18.0,
+  // Narrower HPLC tunnel for denser packed-bed read
+  columnRadius: 7.5,
   leaderboardKey: 'chromaracers_vitamin_rush_lb_v1',
   maxLeaderboard: 10,
   character: 'Vita C',
@@ -338,8 +338,16 @@ try {
   document.body.appendChild(box);
   throw err;
 }
-renderer.setPixelRatio(Math.min(devicePixelRatio, qualityState.pixelRatioCap));
-renderer.setSize(innerWidth, innerHeight);
+const PIX = 3; // 2 = fino, 4 = bem retrô
+function applyRenderSize() {
+  renderer.setPixelRatio(1);
+  renderer.setSize(Math.ceil(innerWidth / PIX), Math.ceil(innerHeight / PIX), false);
+  const c = renderer.domElement;
+  c.style.width = '100%';
+  c.style.height = '100%';
+  c.style.imageRendering = 'pixelated';
+}
+applyRenderSize();
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 mount.appendChild(renderer.domElement);
 
@@ -1285,7 +1293,45 @@ function buildEnvironment() {
   clearGroup(infraGroup);
   seed = 1337;
   buildColumnStructure();
-  if (!DEBUG_COLUMN && !DEBUG_DETECTOR) buildSilicaField();
+
+  // Dense purple/gray silica beads — 1 InstancedMesh draw call
+  if (!DEBUG_COLUMN && !DEBUG_DETECTOR) {
+    const palette = [0x6d3fd6, 0x8a5ae8, 0x5b34b8, 0x8a86a8, 0xa9a4c8].map((c) => new THREE.Color(c));
+    const beadCount = Math.floor(1800 * qualityState.particleMul);
+    const beads = new THREE.InstancedMesh(
+      geo.sphereM,
+      new THREE.MeshStandardMaterial({
+        roughness: 0.8,
+        flatShading: true,
+        emissive: 0x1a1040,
+        emissiveIntensity: 0.3,
+        vertexColors: true,
+      }),
+      beadCount
+    );
+    beads.name = 'silicaBeads';
+    beads.frustumCulled = false;
+    const m4 = new THREE.Matrix4();
+    const q = new THREE.Quaternion();
+    const sc = new THREE.Vector3();
+    for (let i = 0; i < beadCount; i++) {
+      const d = 10 + rnd() * (RACE_DISTANCE - 20);
+      const f = frameAt(d / RACE_DISTANCE);
+      const a = rnd() * Math.PI * 2;
+      const r = GAME_CONFIG.columnRadius - 0.3 - rnd() * 1.4;
+      const p = f.p.clone()
+        .addScaledVector(f.side, Math.cos(a) * r)
+        .addScaledVector(f.trueUp, Math.sin(a) * r);
+      const s = 0.3 + Math.pow(rnd(), 2.5) * 1.5; // muitas pequenas, poucas gigantes
+      m4.compose(p, q, sc.set(s, s, s));
+      beads.setMatrixAt(i, m4);
+      beads.setColorAt(i, palette[Math.floor(rnd() * palette.length)]);
+    }
+    beads.instanceMatrix.needsUpdate = true;
+    if (beads.instanceColor) beads.instanceColor.needsUpdate = true;
+    envGroup.add(beads);
+  }
+
   // Phase 1: skip futuristic infra clutter — rings + shell carry structure
   if (!DEBUG_COLUMN && !DEBUG_DETECTOR && !DEBUG_SILICA && !VISUAL_PHASE1_COMPOSITION) {
     buildInfrastructure();
@@ -1582,7 +1628,7 @@ function updateColumnAtmosphere(dt, boosting) {
   const turbulent = sector?.name === 'TURBULÊNCIA';
   const turbPulse = turbulent ? 1 + Math.sin(state.elapsed * 5.5) * 0.12 : 1;
 
-  scene.fog.density = profile.fog * (boosting ? 0.82 : 1) * (turbulent ? 1.08 : 1);
+  scene.fog.density = (sector?.fog ?? 0.009) * 2.4 * (boosting ? 0.85 : 1);
   scene.background.lerp(new THREE.Color(profile.tint), 0.04);
   columnFill.intensity = 0.28 + profile.flow * 0.12 + (boosting ? 0.18 : 0) + (turbulent ? 0.1 : 0);
 
@@ -2285,7 +2331,6 @@ function sampleFps(dt) {
     if (qualityState.mode === 'auto' && lastFps < 28) {
       qualityState.fewerParticles = true;
       qualityState.particleMul = Math.max(0.35, qualityState.particleMul * 0.7);
-      renderer.setPixelRatio(Math.min(devicePixelRatio, 1.1));
     }
   }
 }
@@ -2366,8 +2411,7 @@ addEventListener('touchend', (e) => {
 function resize() {
   camera.aspect = innerWidth / innerHeight;
   camera.updateProjectionMatrix();
-  renderer.setSize(innerWidth, innerHeight);
-  renderer.setPixelRatio(Math.min(devicePixelRatio, qualityState.pixelRatioCap));
+  applyRenderSize();
 }
 addEventListener('resize', resize);
 
@@ -2396,7 +2440,7 @@ $('settingQuality').value = qualityState.mode;
 $('settingQuality').onchange = (e) => {
   applyQuality(e.target.value, lastFps);
   Storage.set('chromaracers_quality', e.target.value);
-  renderer.setPixelRatio(Math.min(devicePixelRatio, qualityState.pixelRatioCap));
+  applyRenderSize();
 };
 $('settingAudio').checked = AudioBus.enabled;
 $('settingAudio').onchange = (e) => { AudioBus.enabled = e.target.checked; };
