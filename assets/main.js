@@ -1419,39 +1419,6 @@ function applyDebugColumnGameplayHide() {
   });
 }
 
-/** Packed-bead canvas texture for the column wall (dense coverage without 10k+ meshes). */
-function makeBeadTexture() {
-  const S = 512, c = document.createElement('canvas');
-  c.width = c.height = S;
-  const g = c.getContext('2d');
-  g.fillStyle = '#140f3d';
-  g.fillRect(0, 0, S, S);
-  const cols = ['#8f5cf0', '#a57bff', '#7a4de0', '#b0acd0', '#9a96bd', '#5b34b8'];
-  for (let i = 0; i < 320; i++) {
-    const x = Math.random() * S, y = Math.random() * S;
-    const r = 10 + Math.pow(Math.random(), 2) * 38;
-    const col = cols[(Math.random() * cols.length) | 0];
-    for (const ox of [-S, 0, S]) for (const oy of [-S, 0, S]) {
-      const cx = x + ox, cy = y + oy;
-      if (cx < -r || cx > S + r || cy < -r || cy > S + r) continue;
-      const gr = g.createRadialGradient(cx - r * 0.35, cy - r * 0.35, r * 0.1, cx, cy, r);
-      gr.addColorStop(0, '#ffffff');
-      gr.addColorStop(0.35, col);
-      gr.addColorStop(1, '#1a1250');
-      g.fillStyle = gr;
-      g.beginPath();
-      g.arc(cx, cy, r, 0, Math.PI * 2);
-      g.fill();
-    }
-  }
-  const t = new THREE.CanvasTexture(c);
-  t.colorSpace = THREE.SRGBColorSpace;
-  t.wrapS = t.wrapT = THREE.RepeatWrapping;
-  t.magFilter = THREE.NearestFilter;
-  t.repeat.set(70, 3); // 70 along path, 3 around circumference
-  return t;
-}
-
 /** Soft matcap for volumetric 3D relief beads (no scene lights required). */
 function makeMatcap() {
   const s = 64, c = document.createElement('canvas');
@@ -1469,6 +1436,130 @@ function makeMatcap() {
   return t;
 }
 
+/**
+ * Stamp atlas from assets/environment/silica/* (3×2).
+ * silica-back.png is a L/R composition, not a cell grid — use the stamp sheet.
+ */
+const SHEET_URL = './assets/silica-stamps-sheet.png';
+const SHEET_COLS = 3;
+const SHEET_ROWS = 2;
+
+const wallMat2 = new THREE.MeshBasicMaterial({
+  color: 0x140f3d,
+  side: THREE.DoubleSide,
+  fog: false,
+  transparent: true,
+  alphaTest: 0.08,
+});
+
+function bakeWallTexture(img) {
+  const W = 1024, H = 512;
+  const c = document.createElement('canvas');
+  c.width = W; c.height = H;
+  const g = c.getContext('2d');
+  g.imageSmoothingEnabled = false;
+  g.fillStyle = '#140f3d';
+  g.fillRect(0, 0, W, H);
+
+  const cw = img.width / SHEET_COLS;
+  const ch = img.height / SHEET_ROWS;
+  const stamps = [];
+  for (let i = 0; i < 1200; i++) {
+    stamps.push({
+      x: Math.random() * W,
+      y: Math.random() * H,
+      s: 28 + Math.pow(Math.random(), 2) * 140,
+      cell: (Math.random() * SHEET_COLS * SHEET_ROWS) | 0,
+    });
+  }
+  stamps.sort((a, b) => a.s - b.s); // grandes por cima
+
+  for (const st of stamps) {
+    const sx = (st.cell % SHEET_COLS) * cw;
+    const sy = Math.floor(st.cell / SHEET_COLS) * ch;
+    for (const ox of [-W, 0, W]) for (const oy of [-H, 0, H]) {
+      const dx = st.x + ox - st.s / 2;
+      const dy = st.y + oy - st.s / 2;
+      if (dx > W || dy > H || dx + st.s < 0 || dy + st.s < 0) continue;
+      g.drawImage(img, sx, sy, cw, ch, dx, dy, st.s, st.s);
+    }
+  }
+
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.magFilter = THREE.NearestFilter;
+  t.minFilter = THREE.NearestFilter;
+  t.repeat.set(RACE_DISTANCE / 48, 1);
+  wallMat2.color.set(0xffffff);
+  wallMat2.map = t;
+  wallMat2.needsUpdate = true;
+}
+
+const sheetImg = new Image();
+sheetImg.onload = () => bakeWallTexture(sheetImg);
+sheetImg.src = SHEET_URL;
+
+/**
+ * Lateral silica wall strip — ceiling + floor stay open (mobile phase / frames).
+ * sideSign +1 = right, -1 = left.
+ */
+function buildLateralSilicaWall(sideSign) {
+  const R = GAME_CONFIG.columnRadius + 1.6;
+  const segments = qualityState.mode === 'low' ? 160 : 280;
+  const elevBands = qualityState.mode === 'low' ? 6 : 10;
+  // Angles relative to lifted column center — reach pista, leave crown open
+  const pistaLift = (GAME_CONFIG.lowerBeamHeight ?? -1.25) + 0.4;
+  const elev0 = Math.asin(THREE.MathUtils.clamp((pistaLift - COLUMN_LIFT) / R, -0.99, 0.99));
+  const elev1 = 0.72; // stop before ceiling so frames / mobile-phase crown stay readable
+  const positions = [];
+  const uvs = [];
+  const indices = [];
+  const normals = [];
+  const _n = new THREE.Vector3();
+
+  for (let i = 0; i <= segments; i++) {
+    const t = Math.min(0.999, i / segments);
+    const f = frameAt(t);
+    const u = (i / segments) * (RACE_DISTANCE / 48);
+    for (let j = 0; j <= elevBands; j++) {
+      const v = j / elevBands;
+      const elev = elev0 + (elev1 - elev0) * v;
+      const a = sideSign > 0 ? elev : Math.PI - elev;
+      const p = f.p.clone()
+        .addScaledVector(f.trueUp, COLUMN_LIFT)
+        .addScaledVector(f.side, Math.cos(a) * R)
+        .addScaledVector(f.trueUp, Math.sin(a) * R);
+      positions.push(p.x, p.y, p.z);
+      _n.copy(f.side).multiplyScalar(-Math.cos(a))
+        .addScaledVector(f.trueUp, -Math.sin(a))
+        .normalize();
+      normals.push(_n.x, _n.y, _n.z);
+      uvs.push(u, v);
+      if (i < segments && j < elevBands) {
+        const a0 = i * (elevBands + 1) + j;
+        const a1 = a0 + 1;
+        const b0 = (i + 1) * (elevBands + 1) + j;
+        const b1 = b0 + 1;
+        indices.push(a0, b0, a1, a1, b0, b1);
+      }
+    }
+  }
+
+  const geoWall = new THREE.BufferGeometry();
+  geoWall.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geoWall.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
+  geoWall.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+  geoWall.setIndex(indices);
+  geoWall.computeBoundingSphere();
+
+  const mesh = new THREE.Mesh(geoWall, wallMat2);
+  mesh.name = sideSign > 0 ? 'silicaWallR' : 'silicaWallL';
+  mesh.renderOrder = -2;
+  mesh.frustumCulled = false;
+  return mesh;
+}
+
 function buildEnvironment() {
   clearGroup(envGroup);
   clearGroup(silicaGroup);
@@ -1476,21 +1567,27 @@ function buildEnvironment() {
   seed = 1337;
   buildColumnStructure();
 
-  // Continuous BackSide wall — packed-bead texture for dense stationary phase
+  // Dark outer shell for enclosure depth (no silica on ceiling/floor)
   const wallPts = [];
   for (let i = 0; i <= 200; i++) {
     const f = frameAt(i / 200);
     wallPts.push(f.p.clone().addScaledVector(f.trueUp, COLUMN_LIFT));
   }
-  const wallMesh = new THREE.Mesh(
-    new THREE.TubeGeometry(new THREE.CatmullRomCurve3(wallPts), 400, GAME_CONFIG.columnRadius + 1.6, 20, false),
-    new THREE.MeshBasicMaterial({ map: makeBeadTexture(), side: THREE.BackSide })
+  const shell = new THREE.Mesh(
+    new THREE.TubeGeometry(new THREE.CatmullRomCurve3(wallPts), 400, GAME_CONFIG.columnRadius + 1.85, 20, false),
+    new THREE.MeshBasicMaterial({ color: 0x0c0a28, side: THREE.BackSide, fog: false })
   );
-  wallMesh.name = 'columnWall';
-  wallMesh.renderOrder = -3;
-  envGroup.add(wallMesh);
+  shell.name = 'columnWall';
+  shell.renderOrder = -3;
+  envGroup.add(shell);
 
-  // Sparse 3D matcap beads for near-field relief (texture carries dense coverage)
+  // Lateral packed-bed walls from spritesheet stamps; ceiling/floor stay clear
+  if (!DEBUG_COLUMN && !DEBUG_DETECTOR) {
+    envGroup.add(buildLateralSilicaWall(1));
+    envGroup.add(buildLateralSilicaWall(-1));
+  }
+
+  // Sparse 3D matcap beads for near-field relief — lateral walls only
   if (!DEBUG_COLUMN && !DEBUG_DETECTOR) {
     const palette = [0x8f5cf0, 0xa57bff, 0x7a4de0, 0xb0acd0, 0x9a96bd].map((c) => new THREE.Color(c));
     const beadCount = Math.floor(1200 * qualityState.particleMul);
@@ -1504,10 +1601,18 @@ function buildEnvironment() {
     const m4 = new THREE.Matrix4();
     const q = new THREE.Quaternion();
     const sc = new THREE.Vector3();
-    for (let i = 0; i < beadCount; i++) {
+    let placed = 0;
+    let guard = 0;
+    while (placed < beadCount && guard < beadCount * 6) {
+      guard += 1;
       const d = 10 + rnd() * (RACE_DISTANCE - 20);
       const f = frameAt(d / RACE_DISTANCE);
-      const a = rnd() * Math.PI * 2;
+      const sideSign = rnd() < 0.5 ? 1 : -1;
+      const pistaLift = (GAME_CONFIG.lowerBeamHeight ?? -1.25) + 0.5;
+      const Rwall = GAME_CONFIG.columnRadius + 0.7;
+      const elev0 = Math.asin(THREE.MathUtils.clamp((pistaLift - COLUMN_LIFT) / Rwall, -0.99, 0.99));
+      const elev = elev0 + rnd() * (0.72 - elev0);
+      const a = sideSign > 0 ? elev : Math.PI - elev;
       const r = GAME_CONFIG.columnRadius + 0.7 - rnd() * 1.3;
       const p = f.p.clone()
         .addScaledVector(f.trueUp, COLUMN_LIFT)
@@ -1515,11 +1620,13 @@ function buildEnvironment() {
         .addScaledVector(f.trueUp, Math.sin(a) * r);
       const s = 0.4 + Math.pow(rnd(), 2.5) * 0.8;
       m4.compose(p, q, sc.set(s, s, s));
-      beads.setMatrixAt(i, m4);
-      beads.setColorAt(i, palette[Math.floor(rnd() * palette.length)]);
+      beads.setMatrixAt(placed, m4);
+      beads.setColorAt(placed, palette[Math.floor(rnd() * palette.length)]);
+      placed += 1;
     }
+    beads.count = placed;
     beads.instanceMatrix.needsUpdate = true;
-    beads.instanceColor.needsUpdate = true;
+    if (beads.instanceColor) beads.instanceColor.needsUpdate = true;
     envGroup.add(beads);
   }
 
@@ -2719,4 +2826,6 @@ window.CHROMARACERS = {
   hasColumnFrames: () => !!envGroup.getObjectByName('columnFrames'),
   columnFrameCount: () => envGroup.getObjectByName('columnFrames')?.count ?? 0,
   silicaBeadCount: () => envGroup.getObjectByName('silicaBeads')?.count ?? 0,
+  hasLateralSilica: () => !!(envGroup.getObjectByName('silicaWallL') && envGroup.getObjectByName('silicaWallR')),
+  wallTextureReady: () => !!wallMat2?.map,
 };
