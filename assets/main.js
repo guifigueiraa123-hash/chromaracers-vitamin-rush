@@ -770,11 +770,11 @@ const SILICA_SPRITE_ROOT = './assets/environment/silica_sprites';
 
 /** Native pixel extents → world scale bias (readable particles, not solid skin). */
 const SILICA_SIZE_SCALE = {
-  XS: 0.48,
-  S: 0.68,
-  M: 0.98,
-  L: 1.28,
-  XL: 1.62,
+  XS: 0.52,
+  S: 0.74,
+  M: 1.08,
+  L: 1.38,
+  XL: 1.72,
 };
 
 /**
@@ -1064,14 +1064,14 @@ function pickClusterKey(depth01, elev01 = 0.5) {
 /** Individual particle / color / depth / rotation pick for a formation. */
 function pickParticleKey(depth01) {
   const r = rnd();
-  // ~18% depth-variation sprites for distance readability
-  if (r < 0.18) return DEPTH_KEYS[depthBandFrom01(depth01)];
-  // ~10% rotation variants
-  if (r < 0.28) return pickFrom(ROTATION_KEYS);
-  // ~35% color family (material variation)
-  if (r < 0.63) return pickFrom(COLOR_KEYS_BY_FAMILY[pickColorFamily(depth01)]);
-  // remainder: size family
-  return pickFrom(SIZE_KEYS[pickSizeClass(depth01)]);
+  // ~50% size family — enforces XS/S/M/L/XL hierarchy
+  if (r < 0.50) return pickFrom(SIZE_KEYS[pickSizeClass(depth01)]);
+  // ~22% color family (material variation)
+  if (r < 0.72) return pickFrom(COLOR_KEYS_BY_FAMILY[pickColorFamily(depth01)]);
+  // ~16% depth-variation sprites for distance readability
+  if (r < 0.88) return DEPTH_KEYS[depthBandFrom01(depth01)];
+  // ~12% rotation variants
+  return pickFrom(ROTATION_KEYS);
 }
 
 /**
@@ -1238,12 +1238,13 @@ function placeSilicaInstance(layerKey, distance, angleAroundColumn, radialOffset
 }
 
 /**
- * Estimate wall coverage by rasterizing placements into elev×distance bins.
- * Returns fraction of wall cells touched by at least one formation footprint.
+ * Estimate wall coverage by rasterizing placements into elev×distance bins
+ * over the lateral wall band only (rail → ceiling beam). Modest footprints
+ * so the metric tracks visible blue-wall gaps (~75% target).
  */
 function estimateSilicaCoverage(placements, dMin, dMax) {
-  const binsD = 180;
-  const binsE = 28;
+  const binsD = 160;
+  const binsE = 22;
   const occL = new Uint8Array(binsD * binsE);
   const occR = new Uint8Array(binsD * binsE);
   const span = Math.max(1, dMax - dMin);
@@ -1252,13 +1253,11 @@ function estimateSilicaCoverage(placements, dMin, dMax) {
 
   for (const p of placements) {
     const di = THREE.MathUtils.clamp(Math.floor(((p.distance - dMin) / span) * binsD), 0, binsD - 1);
-    // recover elev01 from angle
     const elev = Math.cos(p.angle) >= 0 ? p.angle : Math.PI - p.angle;
     const e01 = THREE.MathUtils.clamp((elev - elevFloor) / elevSpan, 0, 1);
     const ei = THREE.MathUtils.clamp(Math.floor(e01 * binsE), 0, binsE - 1);
     const side = Math.cos(p.angle) >= 0 ? occR : occL;
-    // Footprint grows with scale — larger particles cover more cells
-    const rad = Math.max(0, Math.min(3, Math.floor(p.scale * 0.55)));
+    const rad = Math.max(0, Math.min(2, Math.floor(p.scale * 0.42)));
     for (let dd = -rad; dd <= rad; dd++) {
       for (let ee = -rad; ee <= rad; ee++) {
         if (dd * dd + ee * ee > (rad + 0.5) * (rad + 0.5)) continue;
@@ -1675,12 +1674,12 @@ function buildSilicaField() {
     const band = depthBandFrom01(depth01);
     // Smaller with distance — not a fake opacity trick
     let distMul = 1;
-    if (band === 'midNear') distMul = 0.95;
-    else if (band === 'mid') distMul = 0.88;
-    else if (band === 'midFar') distMul = 0.78;
-    else if (band === 'far') distMul = 0.68;
-    else if (band === 'veryFar') distMul = 0.58;
-    return (layer?.baseScale ?? 1) * (0.9 + rnd() * 0.22) * debugScale * distMul;
+    if (band === 'midNear') distMul = 0.96;
+    else if (band === 'mid') distMul = 0.9;
+    else if (band === 'midFar') distMul = 0.8;
+    else if (band === 'far') distMul = 0.7;
+    else if (band === 'veryFar') distMul = 0.6;
+    return (layer?.baseScale ?? 1) * (0.95 + rnd() * 0.28) * debugScale * distMul;
   };
 
   const archDists = [];
@@ -1691,81 +1690,85 @@ function buildSilicaField() {
   const onArch = (d) => archDists.some((ad) => Math.abs(d - ad) < clear);
 
   // Patch-based fill targeting ~75% coverage (real empty wall between deposits)
-  const softMax = Math.floor(38000 * Math.min(1.1, mul));
+  const softMax = Math.floor(46000 * Math.min(1.1, mul));
   const bayCount = Math.max(1, frameCount - 1);
+
+  /** Place irregular patches inside [d0,d1] on one side. */
+  const fillBaySide = (d0, d1, sideSign, farMul) => {
+    const bayLen = d1 - d0;
+    if (bayLen < 0.5) return;
+    // 3–5 patches; empty corridors between them create the ~25% exposed wall
+    const nPatches = Math.max(3, Math.round((3 + Math.floor(rnd() * 3)) * Math.max(0.72, farMul)));
+    for (let pi = 0; pi < nPatches; pi++) {
+      const elevBias = rnd();
+      let cElev;
+      if (elevBias < 0.48) cElev = 0.22 + rnd() * 0.38;      // mid — highest
+      else if (elevBias < 0.80) cElev = 0.04 + rnd() * 0.26; // lower — highest
+      else if (elevBias < 0.94) cElev = 0.55 + rnd() * 0.2;  // transition — medium
+      else cElev = 0.8 + rnd() * 0.14;                       // upper — sparse
+
+      const cDist = d0 + (0.12 + rnd() * 0.76) * bayLen;
+      const radD = (1.35 + rnd() * 2.2) * (0.88 + farMul * 0.3);
+      const radE = 0.18 + rnd() * 0.25;
+      // Denser cores on mid/lower; upper patches stay light
+      const elevDen = cElev < 0.55 ? 1.25 : cElev < 0.75 ? 0.95 : 0.5;
+      const members = Math.max(14, Math.floor((30 + rnd() * 20) * farMul * mul * elevDen));
+
+      for (let m = 0; m < members; m++) {
+        if (placements.length >= softMax) return;
+        const u = (rnd() - 0.5) * 2;
+        const v = (rnd() - 0.5) * 2;
+        const wobble = 0.85 + rnd() * 0.45;
+        if ((u * u + v * v) > wobble) continue;
+
+        const dd = THREE.MathUtils.clamp(cDist + u * radD, d0, d1);
+        if (onArch(dd)) continue;
+        const elev01 = THREE.MathUtils.clamp(cElev + v * radE, 0.02, 0.96);
+        if (elev01 > 0.84 && rnd() < 0.6) continue;
+
+        const depth01 = dd / RACE_DISTANCE;
+        const sample = sampleSilicaWall(sideSign, elev01);
+
+        let key;
+        const kindRoll = rnd();
+        const clusterChance = elev01 < 0.7 ? 0.26 : 0.12;
+        if (kindRoll < clusterChance) {
+          key = pickClusterKey(depth01, elev01);
+        } else if (kindRoll < clusterChance + 0.12) {
+          key = pickFrom(DETACHED_KEYS);
+          sample.radialOffset = 0.45 + rnd() * 0.65;
+        } else if (kindRoll < clusterChance + 0.15) {
+          key = pickFrom(FLOATING_KEYS);
+          sample.radialOffset = 1.4 + rnd() * 1.2;
+        } else {
+          key = pickParticleKey(depth01);
+        }
+
+        queue(
+          key,
+          dd,
+          sample.angleAroundColumn + (rnd() - 0.5) * 0.04,
+          sample.radialOffset,
+          scaleFor(key, depth01)
+        );
+      }
+    }
+  };
+
+  // Lead-in before first arch so spawn camera sees packing
+  if (archDists[0] > 3) {
+    for (const sideSign of [-1, 1]) {
+      fillBaySide(2, Math.max(3, archDists[0] - clear), sideSign, 1);
+    }
+  }
 
   for (let bi = 0; bi < bayCount; bi++) {
     const d0 = archDists[bi] + clear;
     const d1 = archDists[bi + 1] - clear;
     if (d1 <= d0 + 0.4) continue;
-    const bayLen = d1 - d0;
     const depthMid = ((d0 + d1) * 0.5) / RACE_DISTANCE;
-    // Farther bays: fewer / sparser patches
-    const farMul = depthMid < 0.3 ? 1 : depthMid < 0.6 ? 0.85 : depthMid < 0.85 ? 0.7 : 0.55;
-
-    for (const sideSign of [-1, 1]) {
-      // 2–4 irregular patches per bay side; empty wall between them
-      const nPatches = Math.max(2, Math.round((2 + Math.floor(rnd() * 3)) * farMul));
-      for (let pi = 0; pi < nPatches; pi++) {
-        // Patch centers prefer mid/lower lateral (high density zones)
-        const elevBias = rnd();
-        let cElev;
-        if (elevBias < 0.45) cElev = 0.22 + rnd() * 0.38;
-        else if (elevBias < 0.75) cElev = 0.05 + rnd() * 0.25;
-        else if (elevBias < 0.92) cElev = 0.55 + rnd() * 0.22;
-        else cElev = 0.78 + rnd() * 0.16;
-
-        const cDist = d0 + (0.15 + rnd() * 0.7) * bayLen;
-        const radD = (0.9 + rnd() * 1.8) * (0.75 + farMul * 0.35);
-        const radE = 0.12 + rnd() * 0.22;
-        // Internal density — leave ~25% empty overall via patch gaps + sparse edges
-        const members = Math.max(4, Math.floor((10 + rnd() * 14) * farMul * mul));
-
-        for (let m = 0; m < members; m++) {
-          if (placements.length >= softMax) break;
-          // Irregular boundary: reject points outside a noisy ellipse
-          const u = (rnd() - 0.5) * 2;
-          const v = (rnd() - 0.5) * 2;
-          const wobble = 0.75 + rnd() * 0.55;
-          if ((u * u + v * v) > wobble) continue;
-
-          const dd = THREE.MathUtils.clamp(cDist + u * radD, d0, d1);
-          if (onArch(dd)) continue;
-          const elev01 = THREE.MathUtils.clamp(cElev + v * radE, 0.02, 0.96);
-          // Soft falloff near ceiling
-          if (elev01 > 0.82 && rnd() < 0.55) continue;
-
-          const depth01 = dd / RACE_DISTANCE;
-          const sample = sampleSilicaWall(sideSign, elev01);
-
-          // Formation type: ~25% clusters · ~12% detached · ~3% floating · rest particles
-          let key;
-          const kindRoll = rnd();
-          const clusterChance = elev01 < 0.7 ? 0.28 : 0.14;
-          if (kindRoll < clusterChance) {
-            key = pickClusterKey(depth01, elev01);
-          } else if (kindRoll < clusterChance + 0.12) {
-            key = pickFrom(DETACHED_KEYS);
-            sample.radialOffset = 0.45 + rnd() * 0.65;
-            sample.attach = 'detached';
-          } else if (kindRoll < clusterChance + 0.15) {
-            key = pickFrom(FLOATING_KEYS);
-            sample.radialOffset = 1.4 + rnd() * 1.2;
-            sample.attach = 'floating';
-          } else {
-            key = pickParticleKey(depth01);
-          }
-
-          queue(
-            key,
-            dd,
-            sample.angleAroundColumn + (rnd() - 0.5) * 0.04,
-            sample.radialOffset,
-            scaleFor(key, depth01)
-          );
-        }
-      }
-    }
+    const farMul = depthMid < 0.3 ? 1 : depthMid < 0.6 ? 0.9 : depthMid < 0.85 ? 0.78 : 0.62;
+    for (const sideSign of [-1, 1]) fillBaySide(d0, d1, sideSign, farMul);
   }
 
   /** @type {Record<string, number>} */
