@@ -25,12 +25,12 @@ const GAME_CONFIG = {
   columnRadius: 7.5,
   /** Etapa 3.2.1 — structural frame parameters (geometry only). */
   columnLength: 1500, // matches raceDistance; frames span this length
-  frameSpacing: 18,
-  frameThickness: 0.36,
-  longitudinalBeamCount: 7,
-  longitudinalBeamThickness: 0.26,
+  frameSpacing: 14,
+  frameThickness: 0.55,
+  longitudinalBeamCount: 9,
+  longitudinalBeamThickness: 0.4,
   lowerBeamHeight: -1.25, // track-level lateral rails (trueUp lift)
-  lowerBeamThickness: 0.34,
+  lowerBeamThickness: 0.5,
   leaderboardKey: 'chromaracers_vitamin_rush_lb_v1',
   maxLeaderboard: 10,
   character: 'Vita C',
@@ -679,17 +679,17 @@ mats.columnSectionRingCore = new THREE.MeshBasicMaterial({
   depthWrite: false,
   fog: false,
 });
-/** Etapa 3.2.1 — steel-blue structural members (no emissive / bloom). */
+/** Etapa 3.2.1 — steel / petroleum-blue structural members (no emissive / bloom). */
 mats.columnFrame = new THREE.MeshBasicMaterial({
-  color: 0x1a3a68,
+  color: 0x1e4a7a,
   fog: false,
 });
 mats.columnFrameAccent = new THREE.MeshBasicMaterial({
-  color: 0x245288,
+  color: 0x2a5f96,
   fog: false,
 });
 mats.columnLowerBeam = new THREE.MeshBasicMaterial({
-  color: 0x163458,
+  color: 0x183e6a,
   fog: false,
 });
 
@@ -920,32 +920,31 @@ function pickParticleKey(preferSmall = false) {
 }
 
 /**
- * Etapa 3.2.1 — open arch frame in local column coordinates.
+ * Etapa 3.2.1 — open circular arch in local column coordinates.
  * Local X = side, Y = trueUp, Z = tangent.
- * Feet land on the L/R pista rails; arch rises through the sides/ceiling.
+ * Circle solved so feet sit on L/R pista rails and the crown reaches `radius`.
  * Nothing continues below the race surface.
  */
 function createArchFrameGeometry(radius, tubeRadius, floorLift) {
   const halfW = GAME_CONFIG.laneWidth * 2.35;
-  // Key points: right rail → right wall → ceiling → left wall → left rail
-  const keys = [
-    new THREE.Vector3(halfW, floorLift, 0),
-    new THREE.Vector3(radius * 0.92, floorLift + (radius - floorLift) * 0.28, 0),
-    new THREE.Vector3(radius, radius * 0.42, 0),
-    new THREE.Vector3(radius * 0.72, radius * 0.88, 0),
-    new THREE.Vector3(0, radius, 0),
-    new THREE.Vector3(-radius * 0.72, radius * 0.88, 0),
-    new THREE.Vector3(-radius, radius * 0.42, 0),
-    new THREE.Vector3(-radius * 0.92, floorLift + (radius - floorLift) * 0.28, 0),
-    new THREE.Vector3(-halfW, floorLift, 0),
-  ];
-  const archCurve = new THREE.CatmullRomCurve3(keys, false, 'catmullrom', 0.15);
-  const pathSegs = qualityState.mode === 'low' ? 28 : 48;
-  const radial = qualityState.mode === 'low' ? 5 : 8;
+  // Circle center on the mid-plane: passes through (±halfW, floorLift) and (0, radius)
+  const cy = (radius * radius - halfW * halfW - floorLift * floorLift)
+    / (2 * (radius - floorLift));
+  const rr = radius - cy;
+  const footAng = Math.atan2(floorLift - cy, halfW); // right foot angle from +X
+  // Sweep right foot → top → left foot (counter-clockwise through the crown)
+  const a0 = footAng;
+  const a1 = Math.PI - footAng;
+  const pathSegs = qualityState.mode === 'low' ? 32 : 56;
+  const pts = [];
+  for (let i = 0; i <= pathSegs; i++) {
+    const a = a0 + (a1 - a0) * (i / pathSegs);
+    pts.push(new THREE.Vector3(Math.cos(a) * rr, cy + Math.sin(a) * rr, 0));
+  }
+  const archCurve = new THREE.CatmullRomCurve3(pts, false, 'catmullrom', 0.05);
+  const radial = qualityState.mode === 'low' ? 6 : 10;
   const geoArch = new THREE.TubeGeometry(archCurve, pathSegs, tubeRadius, radial, false);
-  // Approximate angular span for longitudinal beam placement (circle-space)
-  const theta = Math.asin(THREE.MathUtils.clamp(floorLift / radius, -0.99, 0.99));
-  geoArch.userData.archAngles = { a0: theta, a1: Math.PI - theta, theta, halfW };
+  geoArch.userData.archAngles = { a0, a1, cy, rr, halfW };
   return geoArch;
 }
 
@@ -975,7 +974,7 @@ function buildColumnStructure() {
 
   // --- Transversal curved frames (shared geometry, InstancedMesh) ---
   const archGeo = createArchFrameGeometry(R, frameThick * 0.5, floorLift);
-  const { a0, a1 } = archGeo.userData.archAngles;
+  const { a0, a1, cy, rr } = archGeo.userData.archAngles;
   const frames = new THREE.InstancedMesh(archGeo, mats.columnFrame, frameCount);
   frames.name = 'columnFrames';
   frames.frustumCulled = false;
@@ -997,25 +996,28 @@ function buildColumnStructure() {
   frames.instanceMatrix.needsUpdate = true;
   structure.add(frames);
 
-  // --- Longitudinal beams connecting arches (along upper/side shell) ---
-  const beamCount = Math.max(3, Math.floor((GAME_CONFIG.longitudinalBeamCount || 7) * lowMul));
+  // --- Longitudinal beams on the same arch circle (skip feet — lower rails) ---
+  const beamCount = Math.max(3, Math.floor((GAME_CONFIG.longitudinalBeamCount || 9) * lowMul));
   const beamSegs = qualityState.mode === 'low' ? 100 : 180;
   for (let bi = 0; bi < beamCount; bi++) {
-    const a = a0 + (a1 - a0) * (bi / Math.max(1, beamCount - 1));
-    // Skip pure bottom feet — lower rails handle pista-level edges
-    if (Math.sin(a) < floorLift / R + 0.08) continue;
+    const u = bi / Math.max(1, beamCount - 1);
+    // Keep clear of feet so L/R lower rails own the pista edge
+    if (u < 0.06 || u > 0.94) continue;
+    const a = a0 + (a1 - a0) * u;
+    const localX = Math.cos(a) * rr;
+    const localY = cy + Math.sin(a) * rr;
     const pts = [];
     for (let i = 0; i <= beamSegs; i++) {
       const t = THREE.MathUtils.clamp(i / beamSegs, 0, 0.999);
       const f = frameAt(t);
       pts.push(
         f.p.clone()
-          .addScaledVector(f.side, Math.cos(a) * R)
-          .addScaledVector(f.trueUp, Math.sin(a) * R)
+          .addScaledVector(f.side, localX)
+          .addScaledVector(f.trueUp, localY)
       );
     }
     const beamCurve = new THREE.CatmullRomCurve3(pts, false, 'catmullrom', 0.12);
-    const beamGeo = new THREE.TubeGeometry(beamCurve, beamSegs, beamThick * 0.5, 5, false);
+    const beamGeo = new THREE.TubeGeometry(beamCurve, beamSegs, beamThick * 0.5, 6, false);
     const beam = new THREE.Mesh(beamGeo, bi % 2 === 0 ? mats.columnFrame : mats.columnFrameAccent);
     beam.name = 'columnLongitudinalBeam';
     beam.frustumCulled = false;
