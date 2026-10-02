@@ -723,27 +723,51 @@ const SILICA_TEX = {
   clusterLarge: loadSilicaTexture('./assets/environment/silica/silica-cluster-large.png'),
 };
 
-// Stationary-phase palette tint (visual target: purple / violet / indigo / lavender)
+// Packed-bed materials — white base; per-instance purple/violet/lavender tints
 const SILICA_MATS = {
   particleSmall: new THREE.MeshBasicMaterial({
-    map: SILICA_TEX.particleSmall, color: 0x9b7be8, transparent: true, depthWrite: false, side: THREE.DoubleSide,
+    map: SILICA_TEX.particleSmall, color: 0xffffff, transparent: true, alphaTest: 0.28,
+    depthWrite: true, side: THREE.DoubleSide,
   }),
   particleMedium: new THREE.MeshBasicMaterial({
-    map: SILICA_TEX.particleMedium, color: 0x7138d4, transparent: true, depthWrite: false, side: THREE.DoubleSide,
+    map: SILICA_TEX.particleMedium, color: 0xffffff, transparent: true, alphaTest: 0.28,
+    depthWrite: true, side: THREE.DoubleSide,
   }),
   particleLarge: new THREE.MeshBasicMaterial({
-    map: SILICA_TEX.particleLarge, color: 0x5120a8, transparent: true, depthWrite: false, side: THREE.DoubleSide,
+    map: SILICA_TEX.particleLarge, color: 0xffffff, transparent: true, alphaTest: 0.28,
+    depthWrite: true, side: THREE.DoubleSide,
   }),
   clusterSmall: new THREE.MeshBasicMaterial({
-    map: SILICA_TEX.clusterSmall, color: 0x7138d4, transparent: true, depthWrite: false, side: THREE.DoubleSide,
+    map: SILICA_TEX.clusterSmall, color: 0xffffff, transparent: true, alphaTest: 0.28,
+    depthWrite: true, side: THREE.DoubleSide,
   }),
   clusterMedium: new THREE.MeshBasicMaterial({
-    map: SILICA_TEX.clusterMedium, color: 0x5120a8, transparent: true, depthWrite: false, side: THREE.DoubleSide,
+    map: SILICA_TEX.clusterMedium, color: 0xffffff, transparent: true, alphaTest: 0.28,
+    depthWrite: true, side: THREE.DoubleSide,
   }),
   clusterLarge: new THREE.MeshBasicMaterial({
-    map: SILICA_TEX.clusterLarge, color: 0x321b72, transparent: true, depthWrite: false, side: THREE.DoubleSide,
+    map: SILICA_TEX.clusterLarge, color: 0xffffff, transparent: true, alphaTest: 0.28,
+    depthWrite: true, side: THREE.DoubleSide,
   }),
 };
+
+/** Non-neon packed-bed tints — readable on navy wall, not neon. */
+const SILICA_TINTS = [
+  { color: new THREE.Color(0x3a1868), weight: 0.18 }, // dark violet
+  { color: new THREE.Color(0x5120a8), weight: 0.26 }, // deep purple
+  { color: new THREE.Color(0x6a38c0), weight: 0.24 }, // purple
+  { color: new THREE.Color(0x7a58b8), weight: 0.18 }, // blue-violet
+  { color: new THREE.Color(0x9a82d0), weight: 0.14 }, // muted lavender
+];
+
+function pickSilicaTint() {
+  let r = rnd();
+  for (const t of SILICA_TINTS) {
+    r -= t.weight;
+    if (r <= 0) return t.color;
+  }
+  return SILICA_TINTS[0].color;
+}
 
 /** Shared plane for wall-mounted packing (faces column axis, not camera). */
 const silicaPlaneGeo = new THREE.PlaneGeometry(1, 1);
@@ -761,48 +785,81 @@ const silicaLayers = {
   particleSmall: { mat: SILICA_MATS.particleSmall, mesh: null, count: 0, kind: 'particle' },
 };
 const silicaDummy = new THREE.Object3D();
+const _silicaTint = new THREE.Color();
 
 /**
- * Sample a wall-adjacent packed position (LEFT/RIGHT).
- * Tight band near inner shell; wide corridor kept clear.
+ * Dense packed-bed sample in L/R annular sectors of the cylinder.
+ * Thick bed from near the track corridor out to the wall (not a thin skin at R).
+ * angle 0 = +side (right), π/2 = ceiling. Mobile-phase corridor kept clear.
  */
-function sampleWallPacked(sideSign, rMin, rMax, elev = 0) {
-  const r = rMin + rnd() * (rMax - rMin);
-  let lateral = sideSign * r * (0.92 + rnd() * 0.08);
-  let lift = elev * r + (rnd() - 0.5) * 0.28;
-  const hyp = Math.hypot(lateral, lift) || 1;
-  lateral = (lateral / hyp) * r;
-  lift = (lift / hyp) * r;
-  // Wide clear racing corridor (~70–80% of central gameplay band)
-  const corridorHalf = GAME_CONFIG.laneWidth * 2.85;
+function samplePackedBed(sideSign) {
+  const R = GAME_CONFIG.columnRadius;
+  // Tight clear channel so L/R beds flank the blue track like the reference
+  const corridorR = GAME_CONFIG.laneWidth * 2.35;
+  const roll = rnd();
+  // Angular elevation from horizon — side masses + upper-lateral cylinder fill
+  let elev;
+  if (roll < 0.48) elev = -0.1 + rnd() * 0.75;       // mid sides (main mass)
+  else if (roll < 0.78) elev = 0.45 + rnd() * 0.8;    // upper-lateral
+  else elev = -0.55 + rnd() * 0.35;                  // lower wall above floor
+  elev = THREE.MathUtils.clamp(elev, -0.7, 1.35);
+
+  const angle = sideSign > 0 ? elev : Math.PI - elev;
+  // Thick annular bed from near track out to wall (solid packed mass)
+  const bedRoll = rnd();
+  let radial;
+  if (bedRoll < 0.40) radial = R - (0.04 + rnd() * 1.2); // outer crust
+  else if (bedRoll < 0.82) radial = corridorR + 1.1 + rnd() * (R - corridorR - 1.8); // bulk fill
+  else radial = corridorR + 0.7 + rnd() * 1.3; // inner face of bed (near track)
+
+  let lateral = Math.cos(angle) * radial;
+  let lift = Math.sin(angle) * radial;
+
+  // Keep mobile-phase track clear — but beds hug the sides closely
+  const corridorHalf = GAME_CONFIG.laneWidth * 2.25;
   if (Math.abs(lateral) < corridorHalf) {
-    lateral = sideSign * (corridorHalf + 0.35 + rnd() * 0.45);
-    const hyp2 = Math.hypot(lateral, lift) || 1;
-    const rr = Math.max(r, corridorHalf + 0.85);
-    lateral = (lateral / hyp2) * rr;
-    lift = (lift / hyp2) * rr;
+    lateral = sideSign * (corridorHalf + 0.55 + rnd() * 1.1);
+    const hyp = Math.hypot(lateral, lift) || 1;
+    const targetR = Math.max(radial, corridorHalf + 2.4);
+    lateral = (lateral / hyp) * targetR;
+    lift = (lift / hyp) * targetR;
   }
-  return { lateral, lift, r };
+  // Never sit on the floor ribbon
+  if (lift < -R * 0.42) lift = -R * 0.22 + rnd() * 0.4;
+
+  return { lateral, lift, radial, angle };
+}
+
+/** Legacy helper kept for any residual callers — routes to packed-bed sampler. */
+function sampleWallPacked(sideSign, rMin, rMax, elev = 0) {
+  const p = samplePackedBed(sideSign);
+  return { lateral: p.lateral, lift: p.lift, r: p.radial };
 }
 
 /**
  * Place one inward-facing packing instance on a silica layer.
- * Faces the column axis so it reads as bed material, not billboard debris.
+ * Faces the column axis so it reads as packed bed, not floating debris.
  */
-function placeSilicaInstance(layerKey, distance, lateral, lift, scale) {
+function placeSilicaInstance(layerKey, distance, lateral, lift, scale, tint) {
   const layer = silicaLayers[layerKey];
   const cap = layer?.mesh?.userData?.capacity ?? 0;
   if (!layer || !layer.mesh || layer.count >= cap) return false;
   const f = frameAt(THREE.MathUtils.clamp(distance / RACE_DISTANCE, 0, 0.999));
   const s = scale * (0.94 + rnd() * 0.1);
+  const idx = layer.count;
   silicaDummy.position.copy(f.p)
     .addScaledVector(f.side, lateral)
     .addScaledVector(f.trueUp, lift);
   silicaDummy.scale.set(s, s, 1);
   silicaDummy.lookAt(f.p);
-  silicaDummy.rotateZ((rnd() - 0.5) * 0.5);
+  silicaDummy.rotateZ((rnd() - 0.5) * 0.45);
   silicaDummy.updateMatrix();
-  layer.mesh.setMatrixAt(layer.count++, silicaDummy.matrix);
+  layer.mesh.setMatrixAt(idx, silicaDummy.matrix);
+  if (tint && layer.mesh.instanceColor) {
+    _silicaTint.copy(tint);
+    layer.mesh.setColorAt(idx, _silicaTint);
+  }
+  layer.count += 1;
   if (layer.kind === 'cluster') {
     silicaStats.clusters += 1;
     if (layerKey === 'clusterLarge') silicaStats.clusterLarge += 1;
@@ -959,6 +1016,11 @@ function buildColumnClamps(radius) {
  * Brief “180–240 total” cannot hit ~15–25% player-camera frame coverage
  * over 1500 m; composition follows the visual hierarchy targets instead.
  */
+/**
+ * ETAPA 3.2.2 — dense chromatographic packed bed on L/R (+ upper-lateral) walls.
+ * Central mobile-phase corridor stays clear. Section rings remain visible (gaps).
+ * InstancedMesh only — no independent Mesh flood.
+ */
 function buildSilicaField() {
   clearGroup(silicaGroup);
   silicaStats.particles = 0;
@@ -970,121 +1032,115 @@ function buildSilicaField() {
     silicaLayers[key].mesh = null;
   });
 
-  const mul = Math.min(1.1, qualityState.particleMul * (DEBUG_SILICA ? 1.15 : 1));
-  const debugScale = DEBUG_SILICA ? 1.05 : 1;
-  /** @type {{ key: string, distance: number, lateral: number, lift: number, scale: number }[]} */
+  const mul = Math.min(1.15, qualityState.particleMul * (DEBUG_SILICA ? 1.2 : 1));
+  const debugScale = DEBUG_SILICA ? 1.06 : 1;
+  /** @type {{ key: string, distance: number, lateral: number, lift: number, scale: number, tint: THREE.Color }[]} */
   const placements = [];
   const queue = (key, distance, lateral, lift, scale) => {
-    placements.push({ key, distance, lateral, lift, scale });
+    placements.push({
+      key, distance, lateral, lift, scale,
+      tint: pickSilicaTint().clone(),
+    });
   };
 
-  // Midpoint scales: readable wall grain without cave boulders
+  // Readable packed-bed scales at R=18 (compact beads, not sparse boulders)
   const clusterScale = (key) => {
-    if (key === 'clusterLarge') return 1.7 + rnd() * 0.22;
-    if (key === 'clusterMedium') return 1.35 + rnd() * 0.25;
-    return 1.05 + rnd() * 0.22;
+    if (key === 'clusterLarge') return 1.55 + rnd() * 0.35;
+    if (key === 'clusterMedium') return 1.15 + rnd() * 0.28;
+    return 0.85 + rnd() * 0.25;
   };
   const particleScale = (size = 'medium') => {
-    if (size === 'small') return 0.5 + rnd() * 0.16;
-    if (size === 'large') return 0.85 + rnd() * 0.18;
-    return 0.65 + rnd() * 0.18;
+    if (size === 'small') return 0.48 + rnd() * 0.2;
+    if (size === 'large') return 0.85 + rnd() * 0.22;
+    return 0.62 + rnd() * 0.2;
   };
 
-  // Dense packed bed on inner wall — mid/lower sides; ceiling stays clearer
-  const midWallElev = () => {
-    const roll = rnd();
-    if (roll < 0.55) return (rnd() > 0.5 ? 1 : -1) * (0.05 + rnd() * 0.45); // mid
-    if (roll < 0.88) return -0.15 - rnd() * 0.55; // lower-mid
-    return 0.35 + rnd() * 0.4; // sparse upper
-  };
-  const R = GAME_CONFIG.columnRadius;
-  const rWall0 = R - 0.52;
-  const rWall1 = R - 0.1;
+  // Leave metallic section rings readable
+  const ringGaps = [];
+  for (let i = 0; i < SECTORS.length; i++) {
+    const s = SECTORS[i];
+    if (i > 0) ringGaps.push(s.start);
+    const mid = (s.start + s.end) * 0.5;
+    if (mid > 40 && mid < RACE_DISTANCE - 40) ringGaps.push(mid);
+  }
+  const nearRingGap = (d) => ringGaps.some((rd) => Math.abs(rd - d) < 5.2);
 
-  // Consistent L/R wall grain along full spline (anchored to columnRadius)
-  const patchStep = Math.max(1.15, 1.35 / Math.max(0.55, mul));
-  for (let d0 = 9; d0 < RACE_DISTANCE - 12; d0 += patchStep) {
-    const wave = 0.5 + 0.5 * Math.sin(d0 * 0.05) * Math.cos(d0 * 0.018);
+  // Dense cylindrical beds — L/R mass along full spline
+  const patchStep = Math.max(0.32, 0.38 / Math.max(0.55, mul));
+  outerPacked:
+  for (let d0 = 8; d0 < RACE_DISTANCE - 10; d0 += patchStep) {
+    if (nearRingGap(d0) && rnd() < 0.68) continue; // structural rings show through
 
     for (const sideSign of [-1, 1]) {
-      if (rnd() > 0.97 + 0.02 * wave) continue;
+      const seeds = 5 + Math.floor(rnd() * 5); // 5–9 cluster seeds / side / patch
+      for (let s = 0; s < seeds; s++) {
+        if (placements.length > 28000) break outerPacked;
+        const base = samplePackedBed(sideSign);
+        const dd = d0 + (rnd() - 0.5) * patchStep * 0.95;
 
-      const elev = midWallElev();
-      const dd = d0 + (rnd() - 0.5) * patchStep * 0.85;
-
-      if (rnd() < 0.38) {
-        const p = sampleWallPacked(sideSign, rWall0, rWall1, elev);
-        const key = pickClusterKey();
-        queue(key, dd, p.lateral, p.lift, clusterScale(key) * debugScale);
-      } else {
-        const p = sampleWallPacked(sideSign, rWall0, rWall1, elev);
-        const pk = pickParticleKey();
-        const sz = pk === 'particleSmall' ? 'small' : pk === 'particleLarge' ? 'large' : 'medium';
-        queue(pk, dd, p.lateral, p.lift, particleScale(sz) * debugScale);
-      }
-
-      if (rnd() < 0.85) {
-        const p2 = sampleWallPacked(sideSign, rWall0, rWall1, elev + (rnd() - 0.5) * 0.12);
-        if (rnd() < 0.35) {
-          const key = rnd() < 0.75 ? 'clusterSmall' : 'clusterMedium';
-          queue(key, dd + (rnd() - 0.5) * 1.0, p2.lateral, p2.lift, clusterScale(key) * 0.92 * debugScale);
+        if (rnd() < 0.4) {
+          const key = pickClusterKey();
+          queue(key, dd, base.lateral, base.lift, clusterScale(key) * debugScale);
         } else {
-          queue(
-            pickParticleKey(true),
-            dd + (rnd() - 0.5) * 1.15,
-            p2.lateral, p2.lift,
-            particleScale('small') * debugScale
-          );
+          const pk = pickParticleKey(rnd() < 0.45);
+          const sz = pk === 'particleSmall' ? 'small' : pk === 'particleLarge' ? 'large' : 'medium';
+          queue(pk, dd, base.lateral, base.lift, particleScale(sz) * debugScale);
+        }
+
+        // Tight companions → compacted bed mass on the side
+        const companions = 8 + Math.floor(rnd() * 8); // 8–15
+        for (let c = 0; c < companions; c++) {
+          if (rnd() > 0.95) continue;
+          const p2 = samplePackedBed(sideSign);
+          const lateral = THREE.MathUtils.lerp(base.lateral, p2.lateral, 0.25 + rnd() * 0.4);
+          const lift = THREE.MathUtils.lerp(base.lift, p2.lift, 0.25 + rnd() * 0.4);
+          const d2 = dd + (rnd() - 0.5) * 0.85;
+          if (nearRingGap(d2) && rnd() < 0.5) continue;
+          if (rnd() < 0.32) {
+            const key = rnd() < 0.7 ? 'clusterSmall' : 'clusterMedium';
+            queue(key, d2, lateral, lift, clusterScale(key) * 0.92 * debugScale);
+          } else {
+            queue(
+              pickParticleKey(true),
+              d2, lateral, lift,
+              particleScale(rnd() < 0.55 ? 'small' : 'medium') * debugScale
+            );
+          }
         }
       }
+    }
+  }
 
-      // Extra particle to knit packed-bed look without adding large clusters
-      if (rnd() < 0.55 + 0.15 * wave) {
-        const p3 = sampleWallPacked(sideSign, rWall0, rWall1, elev + (rnd() - 0.5) * 0.14);
+  // Background knit — tiny particles for packed-bed fill
+  const fillStep = Math.max(0.55, 0.65 / Math.max(0.55, mul));
+  for (let d0 = 10; d0 < RACE_DISTANCE - 14; d0 += fillStep) {
+    if (placements.length > 28000) break;
+    if (nearRingGap(d0) && rnd() < 0.6) continue;
+    for (const sideSign of [-1, 1]) {
+      const n = 3 + Math.floor(rnd() * 4);
+      for (let i = 0; i < n; i++) {
+        const p = samplePackedBed(sideSign);
         queue(
           pickParticleKey(true),
-          dd + (rnd() - 0.5) * 1.4,
-          p3.lateral, p3.lift,
-          particleScale('small') * debugScale
+          d0 + rnd() * fillStep * 0.6,
+          p.lateral, p.lift,
+          particleScale('small') * 0.95 * debugScale
         );
       }
     }
   }
 
-  // FAR small particles — depth layer on the wall
-  const farStep = Math.max(2.6, 3.0 / Math.max(0.55, mul));
-  for (let d0 = 12; d0 < RACE_DISTANCE - 18; d0 += farStep) {
-    for (const sideSign of [-1, 1]) {
-      if (rnd() > 0.9) continue;
-      const p = sampleWallPacked(sideSign, rWall0 + 0.05, rWall1, midWallElev());
-      queue(
-        pickParticleKey(true),
-        d0 + rnd() * farStep * 0.55,
-        p.lateral, p.lift,
-        particleScale('small') * debugScale
-      );
-    }
-  }
-
-  // Sparse shoulder accents on the wall — frame column, do not seal a cave
-  const stitchStep = Math.max(12, 14 / Math.max(0.55, mul));
-  for (let d0 = 14; d0 < RACE_DISTANCE - 22; d0 += stitchStep) {
-    if (rnd() > 0.6) continue;
-    const sideSign = rnd() > 0.5 ? 1 : -1;
-    const p = sampleWallPacked(sideSign, rWall0, rWall1, midWallElev());
-    queue(pickParticleKey(true), d0 + rnd() * 4, p.lateral, p.lift, particleScale('small') * debugScale);
-  }
-
-  // Cap far below cave (~44k) — about 8–10× lower
-  const softMax = Math.floor(5200 * Math.min(1.05, mul));
+  // Soft budget — keep local cluster cohesion (no stride thinning)
+  const softMax = Math.floor(22000 * Math.min(1.1, mul));
   if (placements.length > softMax) {
-    const keep = [];
-    const stride = placements.length / softMax;
-    for (let i = 0; i < softMax; i++) {
-      keep.push(placements[Math.min(placements.length - 1, Math.floor(i * stride))]);
+    // Reservoir-sample random subset so dense companion groups survive
+    for (let i = placements.length - 1; i > 0; i--) {
+      const j = Math.floor(rnd() * (i + 1));
+      const tmp = placements[i];
+      placements[i] = placements[j];
+      placements[j] = tmp;
     }
-    placements.length = 0;
-    keep.forEach((p) => placements.push(p));
+    placements.length = softMax;
   }
 
   const counts = {
@@ -1099,18 +1155,21 @@ function buildSilicaField() {
     mesh.frustumCulled = false;
     mesh.renderOrder = 0;
     mesh.userData.capacity = n;
+    // Enable per-instance color variation
+    mesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(n * 3), 3);
     silicaLayers[key].mesh = mesh;
     silicaLayers[key].count = 0;
     silicaGroup.add(mesh);
   });
   placements.forEach((p) => {
-    placeSilicaInstance(p.key, p.distance, p.lateral, p.lift, p.scale);
+    placeSilicaInstance(p.key, p.distance, p.lateral, p.lift, p.scale, p.tint);
   });
   Object.keys(silicaLayers).forEach((key) => {
     const layer = silicaLayers[key];
     if (!layer.mesh) return;
     layer.mesh.count = layer.count;
     layer.mesh.instanceMatrix.needsUpdate = true;
+    if (layer.mesh.instanceColor) layer.mesh.instanceColor.needsUpdate = true;
   });
 
   applyEnvironmentDebugVisibility();
