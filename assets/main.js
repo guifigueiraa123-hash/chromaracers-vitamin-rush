@@ -1419,6 +1419,56 @@ function applyDebugColumnGameplayHide() {
   });
 }
 
+/** Packed-bead canvas texture for the column wall (dense coverage without 10k+ meshes). */
+function makeBeadTexture() {
+  const S = 512, c = document.createElement('canvas');
+  c.width = c.height = S;
+  const g = c.getContext('2d');
+  g.fillStyle = '#140f3d';
+  g.fillRect(0, 0, S, S);
+  const cols = ['#8f5cf0', '#a57bff', '#7a4de0', '#b0acd0', '#9a96bd', '#5b34b8'];
+  for (let i = 0; i < 320; i++) {
+    const x = Math.random() * S, y = Math.random() * S;
+    const r = 10 + Math.pow(Math.random(), 2) * 38;
+    const col = cols[(Math.random() * cols.length) | 0];
+    for (const ox of [-S, 0, S]) for (const oy of [-S, 0, S]) {
+      const cx = x + ox, cy = y + oy;
+      if (cx < -r || cx > S + r || cy < -r || cy > S + r) continue;
+      const gr = g.createRadialGradient(cx - r * 0.35, cy - r * 0.35, r * 0.1, cx, cy, r);
+      gr.addColorStop(0, '#ffffff');
+      gr.addColorStop(0.35, col);
+      gr.addColorStop(1, '#1a1250');
+      g.fillStyle = gr;
+      g.beginPath();
+      g.arc(cx, cy, r, 0, Math.PI * 2);
+      g.fill();
+    }
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.magFilter = THREE.NearestFilter;
+  t.repeat.set(70, 3); // 70 along path, 3 around circumference
+  return t;
+}
+
+/** Soft matcap for volumetric 3D relief beads (no scene lights required). */
+function makeMatcap() {
+  const s = 64, c = document.createElement('canvas');
+  c.width = c.height = s;
+  const g = c.getContext('2d');
+  const gr = g.createRadialGradient(s * 0.38, s * 0.32, s * 0.04, s * 0.5, s * 0.5, s * 0.52);
+  gr.addColorStop(0, '#ffffff');
+  gr.addColorStop(0.35, '#e0e0f0');
+  gr.addColorStop(0.7, '#a8a8c8');
+  gr.addColorStop(1, '#50507a');
+  g.fillStyle = gr;
+  g.fillRect(0, 0, s, s);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
 function buildEnvironment() {
   clearGroup(envGroup);
   clearGroup(silicaGroup);
@@ -1426,7 +1476,7 @@ function buildEnvironment() {
   seed = 1337;
   buildColumnStructure();
 
-  // Continuous BackSide wall — column shell behind the silica bed
+  // Continuous BackSide wall — packed-bead texture for dense stationary phase
   const wallPts = [];
   for (let i = 0; i <= 200; i++) {
     const f = frameAt(i / 200);
@@ -1434,21 +1484,19 @@ function buildEnvironment() {
   }
   const wallMesh = new THREE.Mesh(
     new THREE.TubeGeometry(new THREE.CatmullRomCurve3(wallPts), 400, GAME_CONFIG.columnRadius + 1.6, 20, false),
-    new THREE.MeshBasicMaterial({ color: 0x1b2a5e, side: THREE.BackSide })
+    new THREE.MeshBasicMaterial({ map: makeBeadTexture(), side: THREE.BackSide })
   );
   wallMesh.name = 'columnWall';
   wallMesh.renderOrder = -3;
   envGroup.add(wallMesh);
 
-  // Dense silica beads in the lifted column cylinder
+  // Sparse 3D matcap beads for near-field relief (texture carries dense coverage)
   if (!DEBUG_COLUMN && !DEBUG_DETECTOR) {
     const palette = [0x8f5cf0, 0xa57bff, 0x7a4de0, 0xb0acd0, 0x9a96bd].map((c) => new THREE.Color(c));
-    const beadCount = Math.floor(2500 * qualityState.particleMul);
+    const beadCount = Math.floor(1200 * qualityState.particleMul);
     const beads = new THREE.InstancedMesh(
-      geo.sphereM,
-      // No vertexColors — that flag expects a geometry color attr and was zeroing output.
-      // instanceColor alone drives the palette; fog:false keeps MeshBasic readable.
-      new THREE.MeshBasicMaterial({ flatShading: true, fog: false }),
+      new THREE.SphereGeometry(1, 10, 8),
+      new THREE.MeshMatcapMaterial({ matcap: makeMatcap(), fog: false }),
       beadCount
     );
     beads.name = 'silicaBeads';
@@ -1460,12 +1508,12 @@ function buildEnvironment() {
       const d = 10 + rnd() * (RACE_DISTANCE - 20);
       const f = frameAt(d / RACE_DISTANCE);
       const a = rnd() * Math.PI * 2;
-      const r = GAME_CONFIG.columnRadius - 0.3 - rnd() * 1.4;
+      const r = GAME_CONFIG.columnRadius + 0.7 - rnd() * 1.3;
       const p = f.p.clone()
         .addScaledVector(f.trueUp, COLUMN_LIFT)
         .addScaledVector(f.side, Math.cos(a) * r)
         .addScaledVector(f.trueUp, Math.sin(a) * r);
-      const s = 0.3 + Math.pow(rnd(), 2.5) * 1.1;
+      const s = 0.4 + Math.pow(rnd(), 2.5) * 0.8;
       m4.compose(p, q, sc.set(s, s, s));
       beads.setMatrixAt(i, m4);
       beads.setColorAt(i, palette[Math.floor(rnd() * palette.length)]);
