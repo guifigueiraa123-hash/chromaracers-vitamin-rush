@@ -1446,7 +1446,9 @@ function buildEnvironment() {
     const beadCount = Math.floor(2500 * qualityState.particleMul);
     const beads = new THREE.InstancedMesh(
       geo.sphereM,
-      new THREE.MeshBasicMaterial({ flatShading: true, vertexColors: true }),
+      // No vertexColors — that flag expects a geometry color attr and was zeroing output.
+      // instanceColor alone drives the palette; fog:false keeps MeshBasic readable.
+      new THREE.MeshBasicMaterial({ flatShading: true, fog: false }),
       beadCount
     );
     beads.name = 'silicaBeads';
