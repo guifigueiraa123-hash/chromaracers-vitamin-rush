@@ -1468,7 +1468,7 @@ function bakeWallTexture(img) {
     stamps.push({
       x: Math.random() * W,
       y: Math.random() * H,
-      s: 18 + Math.pow(Math.random(), 2) * 120,
+      s: 28 + Math.pow(Math.random(), 2) * 140,
       cell: (Math.random() * SHEET_COLS * SHEET_ROWS) | 0,
     });
   }
@@ -1490,7 +1490,7 @@ function bakeWallTexture(img) {
   t.wrapS = t.wrapT = THREE.RepeatWrapping;
   t.magFilter = THREE.NearestFilter;
   t.minFilter = THREE.NearestFilter;
-  t.repeat.set(RACE_DISTANCE / 38, 1);
+  t.repeat.set(RACE_DISTANCE / 48, 1);
   wallMat2.color.set(0xffffff);
   wallMat2.map = t;
   wallMat2.needsUpdate = true;
@@ -1508,8 +1508,10 @@ function buildLateralSilicaWall(sideSign) {
   const R = GAME_CONFIG.columnRadius + 1.6;
   const segments = qualityState.mode === 'low' ? 160 : 280;
   const elevBands = qualityState.mode === 'low' ? 6 : 10;
-  const elev0 = -0.08;
-  const elev1 = 1.05;
+  // Angles relative to lifted column center — reach pista, leave crown open
+  const pistaLift = (GAME_CONFIG.lowerBeamHeight ?? -1.25) + 0.4;
+  const elev0 = Math.asin(THREE.MathUtils.clamp((pistaLift - COLUMN_LIFT) / R, -0.99, 0.99));
+  const elev1 = 0.72; // stop before ceiling so frames / mobile-phase crown stay readable
   const positions = [];
   const uvs = [];
   const indices = [];
@@ -1519,7 +1521,7 @@ function buildLateralSilicaWall(sideSign) {
   for (let i = 0; i <= segments; i++) {
     const t = Math.min(0.999, i / segments);
     const f = frameAt(t);
-    const u = (i / segments) * (RACE_DISTANCE / 38);
+    const u = (i / segments) * (RACE_DISTANCE / 48);
     for (let j = 0; j <= elevBands; j++) {
       const v = j / elevBands;
       const elev = elev0 + (elev1 - elev0) * v;
@@ -1606,7 +1608,10 @@ function buildEnvironment() {
       const d = 10 + rnd() * (RACE_DISTANCE - 20);
       const f = frameAt(d / RACE_DISTANCE);
       const sideSign = rnd() < 0.5 ? 1 : -1;
-      const elev = -0.05 + rnd() * 1.05;
+      const pistaLift = (GAME_CONFIG.lowerBeamHeight ?? -1.25) + 0.5;
+      const Rwall = GAME_CONFIG.columnRadius + 0.7;
+      const elev0 = Math.asin(THREE.MathUtils.clamp((pistaLift - COLUMN_LIFT) / Rwall, -0.99, 0.99));
+      const elev = elev0 + rnd() * (0.72 - elev0);
       const a = sideSign > 0 ? elev : Math.PI - elev;
       const r = GAME_CONFIG.columnRadius + 0.7 - rnd() * 1.3;
       const p = f.p.clone()
@@ -2821,4 +2826,6 @@ window.CHROMARACERS = {
   hasColumnFrames: () => !!envGroup.getObjectByName('columnFrames'),
   columnFrameCount: () => envGroup.getObjectByName('columnFrames')?.count ?? 0,
   silicaBeadCount: () => envGroup.getObjectByName('silicaBeads')?.count ?? 0,
+  hasLateralSilica: () => !!(envGroup.getObjectByName('silicaWallL') && envGroup.getObjectByName('silicaWallR')),
+  wallTextureReady: () => !!wallMat2?.map,
 };
