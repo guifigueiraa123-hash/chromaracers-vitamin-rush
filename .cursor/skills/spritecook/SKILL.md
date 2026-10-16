@@ -19,7 +19,15 @@ If dynamic tools include a `spritecook` (or SpriteCook) namespace:
 2. Call MCP tools (`get_credit_balance`, `generate_game_art`, etc.) — never invent tool names.
 3. If MCP returns auth errors, follow `spritecook-connect-mcp`.
 
-## Cloud Agent / no MCP (REST fallback)
+## Official MCP (spritecook-mcp)
+
+Config matches [SpriteCook/spritecook-mcp](https://github.com/SpriteCook/spritecook-mcp):
+
+- URL: `https://api.spritecook.ai/mcp/`
+- Header: `Authorization: Bearer ${SPRITECOOK_API_KEY}`
+- Installer: `bash scripts/install-spritecook.sh` or `npx spritecook-mcp setup`
+
+## Cloud Agent / no MCP tools in catalog (REST fallback)
 
 When SpriteCook MCP tools are **not** in the tool catalog:
 
