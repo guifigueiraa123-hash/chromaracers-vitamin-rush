@@ -1,7 +1,10 @@
 {
   "mcpServers": {
     "spritecook": {
-      "url": "https://mcp.spritecook.ai/mcp/claude"
+      "url": "https://api.spritecook.ai/mcp/",
+      "headers": {
+        "Authorization": "Bearer ${SPRITECOOK_API_KEY}"
+      }
     }
   }
 }
