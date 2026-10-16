@@ -7,39 +7,27 @@
 | **Three.js web race** (current shipping game) | `index.html`, `assets/main.js` | Primary gameplay |
 | **Godot 4** (optional / new games) | `godot/` when scaffolded | Separate from shipping race unless migration is requested |
 
-## SpriteCook (Cursor MCP + skills)
+## SpriteCook (skills-first)
 
-Official Cursor art pipeline for generating sprites, tilesets, and UI kits.
+Install and use SpriteCook as **Cursor skills**. MCP is optional.
+
+```bash
+bash scripts/install-spritecook.sh
+```
 
 | Piece | Location |
 |-------|----------|
-| MCP server | `.cursor/mcp.json` → `https://mcp.spritecook.ai/mcp/cursor` |
+| Primary skill | `.cursor/skills/spritecook/SKILL.md` (+ `~/.cursor/skills/spritecook`) |
 | Workflow skills | `.cursor/skills/spritecook-*` |
 | Connect command | `.cursor/commands/connect-spritecook.md` |
-| Local plugin installer | `bash scripts/install-spritecook.sh` |
+| MCP (optional) | `.cursor/mcp.json` → `https://mcp.spritecook.ai/mcp/cursor` |
+| REST smoke | `bash scripts/spritecook-smoke.sh` (needs `SPRITECOOK_API_KEY`) |
 
-### Desktop Cursor
+### How agents should work
 
-1. Run `bash scripts/install-spritecook.sh` (or the upstream one-liner from https://spritecook.ai/cursor).
-2. Fully quit and reopen Cursor.
-3. **Settings → Tools & MCP** → enable **spritecook** → complete browser OAuth.
-4. Verify with a SpriteCook tool (e.g. credit balance), then generate assets.
-
-### Cloud Agents
-
-Two ways to get SpriteCook working in a Cloud Agent:
-
-1. **MCP OAuth (preferred when available)**  
-   Enable **spritecook** under Agents MCP / Plugins & MCPs, URL `https://mcp.spritecook.ai/mcp/cursor`, complete OAuth, then start a new turn so the `spritecook` namespace appears.
-
-2. **API key secret (works without MCP tools in-chat)**  
-   Create a key at https://app.spritecook.ai/api-keys (scopes: `generate`, `read_assets`, `read_credits`).  
-   Add environment secret `SPRITECOOK_API_KEY`, then:
-
-   ```bash
-   bash scripts/spritecook-smoke.sh
-   ```
-
-   Agents can also call `https://api.spritecook.ai/v1/api/*` with `Authorization: Bearer $SPRITECOOK_API_KEY`.
+1. Read skill `spritecook` when the user asks for sprites / SpriteCook art.
+2. If SpriteCook MCP tools exist in this chat, use them (see `spritecook-workflow-essentials`).
+3. If MCP is missing (typical Cloud Agent), use REST with env secret `SPRITECOOK_API_KEY` — never ask the user to paste the key into chat.
+4. Create a key at https://app.spritecook.ai/api-keys (`generate`, `read_assets`, `read_credits`) and add it as environment secret `SPRITECOOK_API_KEY` when REST is needed.
 
 Do **not** commit API keys. Do **not** use the Claude Code MCP path (`/mcp/claude`) in this repo.
