@@ -1,7 +1,8 @@
 {
   "mcpServers": {
     "spritecook": {
-      "url": "https://mcp.spritecook.ai/mcp/claude"
+      "type": "http",
+      "url": "https://mcp.spritecook.ai/mcp/cursor"
     }
   }
 }
