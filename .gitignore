@@ -1,0 +1,9 @@
+# Godot editor binary (install via scripts/install-godot.sh)
+tools/godot/Godot_*
+tools/godot/godot
+
+# Godot project caches (if/when godot/ exists)
+**/.godot/
+**/.import/
+**/export_presets.cfg.bak
+**/*.translation
