@@ -27,6 +27,19 @@ Official Cursor art pipeline for generating sprites, tilesets, and UI kits.
 
 ### Cloud Agents
 
-`.cursor/mcp.json` alone is not enough. Enable **spritecook** under Agents MCP / Plugins & MCPs for this environment, complete OAuth, then start a new agent turn so the `spritecook` namespace appears.
+Two ways to get SpriteCook working in a Cloud Agent:
 
-Do **not** ask for an API key for the hosted Cursor MCP flow. Do **not** use the Claude Code MCP path (`/mcp/claude`) in this repo.
+1. **MCP OAuth (preferred when available)**  
+   Enable **spritecook** under Agents MCP / Plugins & MCPs, URL `https://mcp.spritecook.ai/mcp/cursor`, complete OAuth, then start a new turn so the `spritecook` namespace appears.
+
+2. **API key secret (works without MCP tools in-chat)**  
+   Create a key at https://app.spritecook.ai/api-keys (scopes: `generate`, `read_assets`, `read_credits`).  
+   Add environment secret `SPRITECOOK_API_KEY`, then:
+
+   ```bash
+   bash scripts/spritecook-smoke.sh
+   ```
+
+   Agents can also call `https://api.spritecook.ai/v1/api/*` with `Authorization: Bearer $SPRITECOOK_API_KEY`.
+
+Do **not** commit API keys. Do **not** use the Claude Code MCP path (`/mcp/claude`) in this repo.
