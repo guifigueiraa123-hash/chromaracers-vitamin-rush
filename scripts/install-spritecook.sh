@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Install SpriteCook as Cursor skills (+ official plugin).
-# - Plugin → ~/.cursor/plugins/local/spritecook
-# - Skills → ~/.cursor/skills/spritecook* and .cursor/skills/spritecook*
-# Repo MCP: .cursor/mcp.json → https://mcp.spritecook.ai/mcp/cursor
+# - Plugin -> ~/.cursor/plugins/local/spritecook
+# - Skills -> ~/.cursor/skills/spritecook* and .cursor/skills/spritecook*
+# Repo MCP: .cursor/mcp.json -> https://mcp.spritecook.ai/mcp/cursor
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -38,7 +38,7 @@ copy_tree() {
 }
 
 if [[ -n "${PLUGIN_SRC}" && -d "${PLUGIN_SRC}/skills" ]]; then
-  echo "  [info] Syncing skills from plugin → user + project"
+  echo "  [info] Syncing skills from plugin -> user + project"
   for d in "${PLUGIN_SRC}/skills"/*/; do
     [[ -d "$d" ]] || continue
     name="$(basename "$d")"
@@ -50,7 +50,7 @@ if [[ -n "${PLUGIN_SRC}" && -d "${PLUGIN_SRC}/skills" ]]; then
     cp -a "${PLUGIN_SRC}/commands/connect-spritecook.md" "${USER_COMMANDS}/"
   fi
 elif [[ -d "${PROJECT_SKILLS}/spritecook-workflow-essentials" ]]; then
-  echo "  [info] Syncing repo skills → ~/.cursor/skills"
+  echo "  [info] Syncing repo skills -> ~/.cursor/skills"
   for d in "${PROJECT_SKILLS}"/spritecook*/; do
     [[ -d "$d" ]] || continue
     name="$(basename "$d")"
@@ -70,6 +70,6 @@ echo ""
 echo "  [ok] SpriteCook skills installed:"
 ls -1 "${USER_SKILLS}" | grep '^spritecook' | sed 's/^/    - /'
 echo ""
-echo "  MCP (optional): .cursor/mcp.json → https://mcp.spritecook.ai/mcp/cursor"
+echo "  MCP (optional): .cursor/mcp.json -> https://mcp.spritecook.ai/mcp/cursor"
 echo "  Cloud without MCP: set secret SPRITECOOK_API_KEY, then bash scripts/spritecook-smoke.sh"
 echo ""
