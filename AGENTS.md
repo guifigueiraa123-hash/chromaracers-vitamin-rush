@@ -39,3 +39,9 @@ Desktop alternative: Cursor plugin OAuth via Settings → Tools & MCP (`mcp.spri
 | Full Three.js → Godot race migration | **Not done** — paused when SpriteCook install resumed |
 
 Do **not** replace the Three.js Chromaracers pipeline unless the user explicitly requests a Godot migration.
+
+## Mapa de skills → Chromaracers
+
+Lista obrigatória de onde cada skill se aplica:
+
+- `docs/references/chromaracers-skill-map.md`
