@@ -1,35 +1,43 @@
 extends Node3D
 class_name ColumnEnvironment
-## HPLC glass-column race environment (Van Deemter multipath microcosm).
-## Skills used: godot-game (scenes/typed GDScript/MultiMesh/particles),
-## art-bible brief — glass + silica coat + exterior flow + dynamic sectors.
+## HPLC glass-column race environment aligned to CHROMARACERS_VISUAL_TARGET.
+## Skills: godot-game (MultiMesh/sprites), art bible — glass + purple silica + blue floor.
 
 signal sector_changed(sector_index: int, sector_name: String)
 
 const COLUMN_RADIUS := 4.0
 const COLUMN_LENGTH := 80.0
-const SILICA_RADIUS := 3.85
+const SILICA_RADIUS := 3.72
 const GLASS_RADIUS := 4.05
-const RING_COUNT := 14
-const SILICA_COUNT := 2200
-const EXTERIOR_MOLECULE_COUNT := 120
-const LANE_OFFSETS := [-1.35, 0.0, 1.35]
+const RING_COUNT := 12
+const SILICA_COUNT := 3400
+const INTERIOR_MOLECULE_COUNT := 90
+const FLOOR_Y := -COLUMN_RADIUS + 0.62
 
-@export var scroll_speed: float = 12.0
-@export var band_speed: float = 8.0
+# Visual Target palette §11
+const COL_MOBILE := Color(0.0, 0.682, 0.937) # #00AEEF
+const COL_MOBILE_DEEP := Color(0.0, 0.4, 0.8) # #0066CC
+const COL_MOBILE_HI := Color(0.098, 0.851, 1.0) # #19D9FF
+const COL_STATIONARY := Color(0.318, 0.125, 0.659) # #5120A8
+const COL_STATIONARY_HI := Color(0.608, 0.482, 0.910) # #9B7BE8
+const COL_STRUCTURE := Color(0.063, 0.169, 0.333) # #102B55
+const COL_LIGHT := Color(0.435, 0.918, 1.0) # #6FEAFF
+
+@export var scroll_speed: float = 14.0
+@export var show_exterior_traffic: bool = false
 
 var _elapsed: float = 0.0
 var _sector: int = 0
-var _silica_mmi: MultiMeshInstance3D
-var _exterior_mmi: MultiMeshInstance3D
+var _floor_mat: StandardMaterial3D
 var _rings: Array[MeshInstance3D] = []
-var _lane_mats: Array[StandardMaterial3D] = []
 var _world_env: WorldEnvironment
-var _band_ribbons: Array[MeshInstance3D] = []
+var _interior_mmi: MultiMeshInstance3D
+var _molecule_bases: Array[Transform3D] = []
+var _molecule_speeds: PackedFloat32Array = PackedFloat32Array()
 
 const SECTOR_NAMES := [
 	"INTRODUÇÃO — fluxo laminar",
-	"SEPARAÇÃO — multipath ativo",
+	"SEPARAÇÃO — packed bed ativo",
 	"DETECTOR — convergência UV/Vis",
 ]
 
@@ -37,21 +45,22 @@ const SECTOR_NAMES := [
 func _ready() -> void:
 	_build_environment()
 	_build_glass()
-	_build_silica()
-	_build_rings()
-	_build_lanes()
-	_build_exterior_traffic()
-	_build_concentration_bands()
-	_build_particles()
-	print("[column] Van Deemter glass tunnel ready — sectors=%d silica=%d" % [SECTOR_NAMES.size(), SILICA_COUNT])
+	_build_silica_sprites()
+	_build_lab_rings()
+	_build_mobile_floor()
+	_build_vanishing_point()
+	_build_interior_molecules()
+	if show_exterior_traffic:
+		_build_exterior_traffic_dim()
+	_build_soft_dust()
+	print("[column] Visual Target tunnel ready — silica=%d molecules=%d" % [SILICA_COUNT, INTERIOR_MOLECULE_COUNT])
 
 
 func _process(delta: float) -> void:
 	_elapsed += delta
-	_animate_lanes(delta)
+	_animate_floor()
 	_animate_rings()
-	_animate_exterior(delta)
-	_animate_bands(delta)
+	_animate_molecules(delta)
 	_update_sector()
 
 
@@ -59,40 +68,34 @@ func _build_environment() -> void:
 	_world_env = WorldEnvironment.new()
 	var env := Environment.new()
 	env.background_mode = Environment.BG_COLOR
-	env.background_color = Color(0.04, 0.07, 0.14)
+	env.background_color = Color(0.08, 0.05, 0.16)
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	env.ambient_light_color = Color(0.15, 0.25, 0.4)
-	env.ambient_light_energy = 0.55
+	env.ambient_light_color = Color(0.28, 0.18, 0.42)
+	env.ambient_light_energy = 0.65
 	env.fog_enabled = true
-	env.fog_light_color = Color(0.2, 0.45, 0.7)
-	env.fog_density = 0.018
+	env.fog_light_color = Color(0.42, 0.28, 0.62)
+	env.fog_density = 0.012
 	env.tonemap_mode = Environment.TONE_MAPPER_ACES
+	# Controlled bloom — player must stay readable (Visual Target §14).
 	env.glow_enabled = true
-	env.glow_intensity = 0.35
-	env.glow_bloom = 0.15
+	env.glow_intensity = 0.18
+	env.glow_bloom = 0.06
+	env.glow_hdr_threshold = 1.1
 	_world_env.environment = env
 	add_child(_world_env)
 
 	var key := DirectionalLight3D.new()
-	key.light_color = Color(0.55, 0.75, 1.0)
-	key.light_energy = 0.45
-	key.rotation_degrees = Vector3(-35, 25, 0)
+	key.light_color = Color(0.7, 0.8, 1.0)
+	key.light_energy = 0.55
+	key.rotation_degrees = Vector3(-40, 20, 0)
 	add_child(key)
 
 	var fill := OmniLight3D.new()
-	fill.light_color = Color(0.3, 0.85, 1.0)
-	fill.light_energy = 1.2
-	fill.omni_range = 28.0
-	fill.position = Vector3(0, 0, 6)
+	fill.light_color = COL_MOBILE_HI
+	fill.light_energy = 0.9
+	fill.omni_range = 24.0
+	fill.position = Vector3(0, 0.5, 5.0)
 	add_child(fill)
-
-	var detector := OmniLight3D.new()
-	detector.name = "DetectorGlow"
-	detector.light_color = Color(0.75, 0.35, 1.0)
-	detector.light_energy = 4.0
-	detector.omni_range = 22.0
-	detector.position = Vector3(0, 0, -COLUMN_LENGTH + 6.0)
-	add_child(detector)
 
 
 func _build_glass() -> void:
@@ -110,226 +113,344 @@ func _build_glass() -> void:
 
 	var mat := StandardMaterial3D.new()
 	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	mat.albedo_color = Color(0.55, 0.85, 1.0, 0.08)
-	mat.roughness = 0.05
-	mat.metallic = 0.15
+	mat.albedo_color = Color(0.65, 0.85, 1.0, 0.07)
+	mat.roughness = 0.08
+	mat.metallic = 0.2
 	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
 	mat.emission_enabled = true
-	mat.emission = Color(0.15, 0.4, 0.55)
-	mat.emission_energy_multiplier = 0.2
+	mat.emission = Color(0.2, 0.35, 0.5)
+	mat.emission_energy_multiplier = 0.08
 	glass.material_override = mat
 	add_child(glass)
 
 
-func _build_silica() -> void:
-	_silica_mmi = MultiMeshInstance3D.new()
-	_silica_mmi.name = "SilicaPackedBed"
-	var sphere := SphereMesh.new()
-	sphere.radius = 0.09
-	sphere.height = 0.18
-	sphere.radial_segments = 8
-	sphere.rings = 4
+func _make_silica_material(tex_path: String, tint: Color) -> StandardMaterial3D:
+	var mat := StandardMaterial3D.new()
+	var tex := load(tex_path) as Texture2D
+	if tex:
+		mat.albedo_texture = tex
+		mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
+	mat.albedo_color = tint
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
+	mat.alpha_scissor_threshold = 0.12
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	mat.emission_enabled = true
+	mat.emission = tint
+	mat.emission_energy_multiplier = 0.55
+	return mat
 
-	var bead_mat := StandardMaterial3D.new()
-	bead_mat.albedo_color = Color(0.72, 0.88, 0.98, 0.85)
-	bead_mat.roughness = 0.25
-	bead_mat.metallic = 0.05
-	bead_mat.emission_enabled = true
-	bead_mat.emission = Color(0.25, 0.55, 0.75)
-	bead_mat.emission_energy_multiplier = 0.35
-	bead_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 
-	var mm := MultiMesh.new()
-	mm.transform_format = MultiMesh.TRANSFORM_3D
-	mm.mesh = sphere
-	mm.instance_count = SILICA_COUNT
+func _build_silica_sprites() -> void:
+	## Packed purple stationary phase on walls — coat + billboard sprites.
+	var parent := Node3D.new()
+	parent.name = "SilicaPackedBed"
+	add_child(parent)
+
+	# Soft purple coat (mass of packed bed) so walls read purple even far away.
+	var coat := MeshInstance3D.new()
+	coat.name = "SilicaCoat"
+	var coat_mesh := CylinderMesh.new()
+	coat_mesh.top_radius = SILICA_RADIUS + 0.05
+	coat_mesh.bottom_radius = SILICA_RADIUS + 0.05
+	coat_mesh.height = COLUMN_LENGTH - 2.0
+	coat_mesh.radial_segments = 48
+	coat.mesh = coat_mesh
+	coat.rotation_degrees = Vector3(90, 0, 0)
+	coat.position = Vector3(0, 0, -COLUMN_LENGTH * 0.5)
+	var coat_mat := StandardMaterial3D.new()
+	coat_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	coat_mat.albedo_color = Color(0.196, 0.106, 0.447, 0.55)
+	coat_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	coat_mat.roughness = 0.85
+	coat_mat.emission_enabled = true
+	coat_mat.emission = COL_STATIONARY
+	coat_mat.emission_energy_multiplier = 0.2
+	coat.material_override = coat_mat
+	parent.add_child(coat)
+
+	var batches := [
+		{"path": "res://assets/silica/silica-cluster-large.png", "count": 900, "size": 0.72, "tint": Color(0.443, 0.220, 0.831)},
+		{"path": "res://assets/silica/silica-cluster-medium.png", "count": 1100, "size": 0.5, "tint": COL_STATIONARY_HI},
+		{"path": "res://assets/silica/silica-particle-large.png", "count": 800, "size": 0.36, "tint": Color(0.55, 0.35, 0.9)},
+		{"path": "res://assets/silica/silica-particle-medium.png", "count": 600, "size": 0.26, "tint": Color(0.65, 0.5, 0.95)},
+	]
 
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 4691
-	for i in SILICA_COUNT:
-		var z := rng.randf_range(-COLUMN_LENGTH + 1.0, -1.0)
-		var ang := rng.randf() * TAU
-		# Pack near the wall (stationary phase coat), leave center open for race path.
-		var r := SILICA_RADIUS + rng.randf_range(-0.25, 0.12)
-		# Bias: fewer beads near floor lanes so track stays readable.
-		var y := sin(ang) * r
-		if absf(y) < 0.55 and absf(cos(ang)) > 0.65:
-			y -= signf(y) * 0.35
-		var x := cos(ang) * r
-		var s := rng.randf_range(0.55, 1.35)
-		var xf := Transform3D(Basis.from_scale(Vector3.ONE * s), Vector3(x, y, z))
-		mm.set_instance_transform(i, xf)
+	var placed := 0
+	for batch in batches:
+		var mmi := MultiMeshInstance3D.new()
+		var quad := QuadMesh.new()
+		var s: float = batch["size"]
+		quad.size = Vector2(s, s)
+		var mm := MultiMesh.new()
+		mm.transform_format = MultiMesh.TRANSFORM_3D
+		mm.mesh = quad
+		mm.instance_count = int(batch["count"])
+		mmi.multimesh = mm
+		mmi.material_override = _make_silica_material(batch["path"], batch["tint"])
+		parent.add_child(mmi)
 
-	_silica_mmi.multimesh = mm
-	_silica_mmi.material_override = bead_mat
-	add_child(_silica_mmi)
+		for i in int(batch["count"]):
+			var z := rng.randf_range(-COLUMN_LENGTH + 1.0, -1.0)
+			# Bias packing to upper/side walls; keep floor corridor clear.
+			var ang := rng.randf_range(0.35, TAU - 0.35)
+			if absf(ang - PI) < 0.45 and rng.randf() < 0.7:
+				ang += PI * 0.55 * signf(rng.randf() - 0.5)
+			var r := SILICA_RADIUS + rng.randf_range(-0.35, 0.2)
+			var x := cos(ang) * r
+			var y := sin(ang) * r
+			if y < FLOOR_Y + 0.45:
+				y = FLOOR_Y + 0.45 + rng.randf_range(0.0, 1.8)
+				var side := 1.0 if rng.randf() > 0.5 else -1.0
+				x = side * sqrt(maxf(SILICA_RADIUS * SILICA_RADIUS - y * y, 0.4))
+			var scale_j := rng.randf_range(0.7, 1.55)
+			var pos := Vector3(x, y, z)
+			var basis := Basis.from_scale(Vector3.ONE * scale_j)
+			mm.set_instance_transform(i, Transform3D(basis, pos))
+			placed += 1
+	print("[column] silica sprites placed=", placed)
 
 
-func _build_rings() -> void:
+func _build_lab_rings() -> void:
 	var parent := Node3D.new()
-	parent.name = "NeonRings"
+	parent.name = "LabRings"
 	add_child(parent)
 	for i in RING_COUNT:
 		var ring := MeshInstance3D.new()
 		var torus := TorusMesh.new()
-		torus.inner_radius = COLUMN_RADIUS - 0.08
-		torus.outer_radius = COLUMN_RADIUS + 0.1
-		torus.rings = 24
-		torus.ring_segments = 48
+		torus.inner_radius = COLUMN_RADIUS - 0.06
+		torus.outer_radius = COLUMN_RADIUS + 0.12
+		torus.rings = 20
+		torus.ring_segments = 40
 		ring.mesh = torus
-		var z := -2.0 - float(i) * (COLUMN_LENGTH / float(RING_COUNT))
+		var z := -3.0 - float(i) * (COLUMN_LENGTH / float(RING_COUNT))
 		ring.position = Vector3(0, 0, z)
 		ring.rotation_degrees = Vector3(90, 0, 0)
 
 		var mat := StandardMaterial3D.new()
+		mat.albedo_color = COL_STRUCTURE
+		mat.metallic = 0.85
+		mat.roughness = 0.35
 		mat.emission_enabled = true
-		mat.emission = Color(0.2, 0.95, 1.0)
-		mat.emission_energy_multiplier = 2.4
-		mat.albedo_color = Color(0.1, 0.4, 0.5)
-		mat.roughness = 0.3
+		mat.emission = Color(0.15, 0.35, 0.55)
+		mat.emission_energy_multiplier = 0.35
 		ring.material_override = mat
 		parent.add_child(ring)
 		_rings.append(ring)
 
 
-func _build_lanes() -> void:
-	var parent := Node3D.new()
-	parent.name = "Lanes"
-	add_child(parent)
-	for i in LANE_OFFSETS.size():
-		var lane := MeshInstance3D.new()
-		var box := BoxMesh.new()
-		box.size = Vector3(0.55, 0.04, COLUMN_LENGTH - 4.0)
-		lane.mesh = box
-		lane.position = Vector3(LANE_OFFSETS[i], -COLUMN_RADIUS + 0.55, -COLUMN_LENGTH * 0.5)
+func _build_mobile_floor() -> void:
+	var floor_mesh := MeshInstance3D.new()
+	floor_mesh.name = "MobilePhaseFloor"
+	var box := BoxMesh.new()
+	# Wide river — primary race surface (replaces thin neon lanes).
+	box.size = Vector3(COLUMN_RADIUS * 1.55, 0.06, COLUMN_LENGTH - 3.0)
+	floor_mesh.mesh = box
+	floor_mesh.position = Vector3(0, FLOOR_Y, -COLUMN_LENGTH * 0.5)
 
-		var mat := StandardMaterial3D.new()
-		mat.emission_enabled = true
-		mat.emission = Color(0.15, 0.9, 1.0)
-		mat.emission_energy_multiplier = 1.6
-		mat.albedo_color = Color(0.05, 0.25, 0.35)
-		mat.uv1_scale = Vector3(1, 12, 1)
-		lane.material_override = mat
-		_lane_mats.append(mat)
-		parent.add_child(lane)
+	_floor_mat = StandardMaterial3D.new()
+	_floor_mat.albedo_color = COL_MOBILE_DEEP
+	_floor_mat.emission_enabled = true
+	_floor_mat.emission = COL_MOBILE
+	_floor_mat.emission_energy_multiplier = 0.85
+	_floor_mat.roughness = 0.2
+	_floor_mat.metallic = 0.05
+	_floor_mat.uv1_scale = Vector3(1.0, 18.0, 1.0)
+	floor_mesh.material_override = _floor_mat
+	add_child(floor_mesh)
 
-		# Multipath hints — faint alternate routes through packing (Van Deemter A-term).
-		if i == 1:
-			continue
-		var alt := MeshInstance3D.new()
-		var alt_box := BoxMesh.new()
-		alt_box.size = Vector3(0.18, 0.02, COLUMN_LENGTH * 0.35)
-		alt.mesh = alt_box
-		alt.position = Vector3(LANE_OFFSETS[i] * 1.55, -COLUMN_RADIUS + 1.2, -COLUMN_LENGTH * 0.35)
-		alt.rotation_degrees = Vector3(0, 8.0 * signf(LANE_OFFSETS[i]), 12.0 * signf(LANE_OFFSETS[i]))
-		var alt_mat := StandardMaterial3D.new()
-		alt_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-		alt_mat.albedo_color = Color(0.4, 1.0, 0.85, 0.25)
-		alt_mat.emission_enabled = true
-		alt_mat.emission = Color(0.3, 1.0, 0.7)
-		alt_mat.emission_energy_multiplier = 0.6
-		alt.material_override = alt_mat
-		parent.add_child(alt)
+	# Center highlight streak for forward direction.
+	var streak := MeshInstance3D.new()
+	streak.name = "FloorStreak"
+	var streak_box := BoxMesh.new()
+	streak_box.size = Vector3(0.55, 0.04, COLUMN_LENGTH - 4.0)
+	streak.mesh = streak_box
+	streak.position = Vector3(0, FLOOR_Y + 0.04, -COLUMN_LENGTH * 0.5)
+	var streak_mat := StandardMaterial3D.new()
+	streak_mat.albedo_color = COL_MOBILE_HI
+	streak_mat.emission_enabled = true
+	streak_mat.emission = COL_MOBILE_HI
+	streak_mat.emission_energy_multiplier = 1.1
+	streak_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	streak_mat.albedo_color.a = 0.75
+	streak.material_override = streak_mat
+	_lane_mats_compat(streak_mat)
+	add_child(streak)
 
 
-func _build_exterior_traffic() -> void:
-	_exterior_mmi = MultiMeshInstance3D.new()
-	_exterior_mmi.name = "ExteriorMolecules"
-	var capsule := CapsuleMesh.new()
-	capsule.radius = 0.08
-	capsule.height = 0.28
+var _extra_floor_mats: Array[StandardMaterial3D] = []
+
+
+func _lane_mats_compat(mat: StandardMaterial3D) -> void:
+	_extra_floor_mats.append(mat)
+
+
+func _build_vanishing_point() -> void:
+	var disc := MeshInstance3D.new()
+	disc.name = "VanishingCyan"
+	var cyl := CylinderMesh.new()
+	cyl.top_radius = 1.6
+	cyl.bottom_radius = 1.6
+	cyl.height = 0.12
+	cyl.radial_segments = 32
+	disc.mesh = cyl
+	disc.rotation_degrees = Vector3(90, 0, 0)
+	disc.position = Vector3(0, 0.2, -COLUMN_LENGTH + 2.5)
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = COL_LIGHT
+	mat.emission_enabled = true
+	mat.emission = COL_LIGHT
+	mat.emission_energy_multiplier = 2.8
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	disc.material_override = mat
+	add_child(disc)
+
+	var detector := OmniLight3D.new()
+	detector.name = "DetectorGlow"
+	detector.light_color = COL_LIGHT
+	detector.light_energy = 5.5
+	detector.omni_range = 28.0
+	detector.position = Vector3(0, 0.3, -COLUMN_LENGTH + 3.0)
+	add_child(detector)
+
+
+func _build_interior_molecules() -> void:
+	_interior_mmi = MultiMeshInstance3D.new()
+	_interior_mmi.name = "InteriorMolecules"
+	var sphere := SphereMesh.new()
+	sphere.radius = 0.11
+	sphere.height = 0.22
+	sphere.radial_segments = 10
+	sphere.rings = 6
 
 	var mat := StandardMaterial3D.new()
-	mat.emission_enabled = true
-	mat.emission = Color(1.0, 0.55, 0.2)
-	mat.emission_energy_multiplier = 2.0
-	mat.albedo_color = Color(1.0, 0.7, 0.35)
 	mat.vertex_color_use_as_albedo = true
+	mat.emission_enabled = true
+	mat.emission = Color(1, 1, 1)
+	mat.emission_energy_multiplier = 0.9
+	mat.roughness = 0.35
 
 	var mm := MultiMesh.new()
 	mm.transform_format = MultiMesh.TRANSFORM_3D
 	mm.use_colors = true
-	mm.mesh = capsule
-	mm.instance_count = EXTERIOR_MOLECULE_COUNT
+	mm.mesh = sphere
+	mm.instance_count = INTERIOR_MOLECULE_COUNT
 
 	var rng := RandomNumberGenerator.new()
-	rng.seed = 1701
+	rng.seed = 2026
 	var colors := [
-		Color(1.0, 0.45, 0.2),
-		Color(0.3, 1.0, 0.7),
-		Color(0.85, 0.4, 1.0),
-		Color(0.3, 0.7, 1.0),
-		Color(1.0, 0.9, 0.3),
+		Color(0.0, 0.851, 1.0),
+		Color(1.0, 0.31, 0.847),
+		Color(1.0, 0.622, 0.11),
+		Color(1.0, 0.82, 0.4),
+		Color(0.659, 0.333, 0.969),
 	]
-	for i in EXTERIOR_MOLECULE_COUNT:
-		var ang := rng.randf() * TAU
-		var r := GLASS_RADIUS + rng.randf_range(0.35, 1.8)
-		var z := rng.randf_range(-COLUMN_LENGTH + 2.0, -2.0)
-		var s := rng.randf_range(0.7, 1.6)
-		var xf := Transform3D(Basis.from_scale(Vector3(s, s, s * 1.4)), Vector3(cos(ang) * r, sin(ang) * r, z))
+	_molecule_bases.clear()
+	_molecule_speeds = PackedFloat32Array()
+	_molecule_speeds.resize(INTERIOR_MOLECULE_COUNT)
+
+	for i in INTERIOR_MOLECULE_COUNT:
+		var x := rng.randf_range(-1.6, 1.6)
+		var y := rng.randf_range(FLOOR_Y + 0.5, 1.8)
+		var z := rng.randf_range(-COLUMN_LENGTH + 4.0, -4.0)
+		var s := rng.randf_range(0.55, 1.35)
+		var xf := Transform3D(Basis.from_scale(Vector3.ONE * s), Vector3(x, y, z))
 		mm.set_instance_transform(i, xf)
 		mm.set_instance_color(i, colors[i % colors.size()])
+		_molecule_bases.append(xf)
+		_molecule_speeds[i] = rng.randf_range(0.45, 1.25)
 
-	_exterior_mmi.multimesh = mm
-	_exterior_mmi.material_override = mat
-	add_child(_exterior_mmi)
+	_interior_mmi.multimesh = mm
+	_interior_mmi.material_override = mat
+	add_child(_interior_mmi)
+
+	# Simple 2–3 node clusters (visual Target §6) as child meshes on a few leaders.
+	for c in 12:
+		var cluster := Node3D.new()
+		cluster.name = "MoleculeCluster_%d" % c
+		var base_z := -8.0 - float(c) * 5.5
+		cluster.position = Vector3(rng.randf_range(-1.2, 1.2), rng.randf_range(0.2, 1.4), base_z)
+		var col: Color = colors[c % colors.size()]
+		for n in 3:
+			var node := MeshInstance3D.new()
+			var sm := SphereMesh.new()
+			sm.radius = 0.09
+			sm.height = 0.18
+			node.mesh = sm
+			node.position = Vector3(n * 0.16 - 0.16, sin(float(n)) * 0.08, 0)
+			var nm := StandardMaterial3D.new()
+			nm.albedo_color = col
+			nm.emission_enabled = true
+			nm.emission = col
+			nm.emission_energy_multiplier = 0.85
+			node.material_override = nm
+			cluster.add_child(node)
+		add_child(cluster)
 
 
-func _build_concentration_bands() -> void:
-	var parent := Node3D.new()
-	parent.name = "ConcentrationBands"
-	add_child(parent)
-	for i in 3:
-		var band := MeshInstance3D.new()
-		var torus := TorusMesh.new()
-		torus.inner_radius = GLASS_RADIUS + 0.2
-		torus.outer_radius = GLASS_RADIUS + 0.55
-		torus.rings = 16
-		torus.ring_segments = 32
-		band.mesh = torus
-		band.rotation_degrees = Vector3(90, 0, 0)
-		band.position = Vector3(0, 0, -10.0 - float(i) * 18.0)
-		var mat := StandardMaterial3D.new()
-		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-		mat.albedo_color = Color(0.6, 0.3, 1.0, 0.35)
-		mat.emission_enabled = true
-		mat.emission = [Color(0.9, 0.3, 1.0), Color(0.2, 1.0, 0.8), Color(1.0, 0.5, 0.2)][i]
-		mat.emission_energy_multiplier = 1.8
-		mat.cull_mode = BaseMaterial3D.CULL_DISABLED
-		band.material_override = mat
-		parent.add_child(band)
-		_band_ribbons.append(band)
+func _build_exterior_traffic_dim() -> void:
+	## Optional subordinate exterior flow — off by default until composition locks.
+	var mmi := MultiMeshInstance3D.new()
+	mmi.name = "ExteriorMoleculesDim"
+	var capsule := CapsuleMesh.new()
+	capsule.radius = 0.06
+	capsule.height = 0.2
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.mesh = capsule
+	mm.instance_count = 40
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 99
+	for i in 40:
+		var ang := rng.randf() * TAU
+		var r := GLASS_RADIUS + rng.randf_range(0.4, 1.2)
+		var z := rng.randf_range(-COLUMN_LENGTH + 2.0, -2.0)
+		mm.set_instance_transform(i, Transform3D(Basis.IDENTITY, Vector3(cos(ang) * r, sin(ang) * r, z)))
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = Color(0.7, 0.5, 1.0, 0.35)
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.emission_enabled = true
+	mat.emission = Color(0.5, 0.3, 0.8)
+	mat.emission_energy_multiplier = 0.3
+	mmi.multimesh = mm
+	mmi.material_override = mat
+	add_child(mmi)
 
 
-func _build_particles() -> void:
+func _build_soft_dust() -> void:
 	var dust := GPUParticles3D.new()
 	dust.name = "FlowDust"
-	dust.amount = 400
-	dust.lifetime = 4.0
-	dust.preprocess = 2.0
-	dust.visibility_aabb = AABB(Vector3(-8, -8, -COLUMN_LENGTH), Vector3(16, 16, COLUMN_LENGTH + 4))
+	dust.amount = 180
+	dust.lifetime = 5.0
+	dust.preprocess = 1.5
+	dust.visibility_aabb = AABB(Vector3(-6, -6, -COLUMN_LENGTH), Vector3(12, 12, COLUMN_LENGTH + 4))
 	var mat := ParticleProcessMaterial.new()
 	mat.direction = Vector3(0, 0, 1)
-	mat.spread = 18.0
-	mat.initial_velocity_min = 2.0
-	mat.initial_velocity_max = 7.0
+	mat.spread = 12.0
+	mat.initial_velocity_min = 1.5
+	mat.initial_velocity_max = 5.0
 	mat.gravity = Vector3.ZERO
 	mat.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_BOX
-	mat.emission_box_extents = Vector3(GLASS_RADIUS + 1.2, GLASS_RADIUS + 1.2, COLUMN_LENGTH * 0.45)
-	mat.color = Color(0.5, 0.85, 1.0, 0.65)
+	mat.emission_box_extents = Vector3(1.8, 1.2, COLUMN_LENGTH * 0.4)
+	mat.color = Color(0.4, 0.75, 1.0, 0.35)
 	dust.process_material = mat
 	var pm := SphereMesh.new()
-	pm.radius = 0.03
-	pm.height = 0.06
+	pm.radius = 0.025
+	pm.height = 0.05
 	dust.draw_pass_1 = pm
-	dust.position = Vector3(0, 0, -COLUMN_LENGTH * 0.5)
+	dust.position = Vector3(0, FLOOR_Y + 0.8, -COLUMN_LENGTH * 0.5)
 	add_child(dust)
 
 
-func _animate_lanes(_delta: float) -> void:
-	for mat in _lane_mats:
-		mat.uv1_offset = Vector3(0, fmod(_elapsed * scroll_speed * 0.15, 1.0), 0)
-		mat.emission_energy_multiplier = 1.4 + sin(_elapsed * 3.0) * 0.35
+func _animate_floor() -> void:
+	if _floor_mat:
+		_floor_mat.uv1_offset = Vector3(0, fmod(_elapsed * scroll_speed * 0.12, 1.0), 0)
+		_floor_mat.emission_energy_multiplier = 0.75 + sin(_elapsed * 2.2) * 0.12
+	for mat in _extra_floor_mats:
+		mat.emission_energy_multiplier = 1.0 + sin(_elapsed * 2.5) * 0.15
 
 
 func _animate_rings() -> void:
@@ -337,40 +458,33 @@ func _animate_rings() -> void:
 		var mat := _rings[i].material_override as StandardMaterial3D
 		if mat == null:
 			continue
-		var phase := _elapsed * 2.2 - float(i) * 0.45
-		mat.emission_energy_multiplier = 1.2 + absf(sin(phase)) * 2.8
+		# Subtle pulse only — rings stay subordinate to player/floor.
+		var phase := _elapsed * 1.1 - float(i) * 0.3
+		mat.emission_energy_multiplier = 0.25 + absf(sin(phase)) * 0.2
 
 
-func _animate_exterior(delta: float) -> void:
-	if _exterior_mmi == null:
+func _animate_molecules(delta: float) -> void:
+	if _interior_mmi == null:
 		return
-	var mm := _exterior_mmi.multimesh
+	var mm := _interior_mmi.multimesh
 	for i in mm.instance_count:
 		var xf := mm.get_instance_transform(i)
-		xf.origin.z += scroll_speed * delta * (0.65 + fmod(float(i) * 0.17, 1.0))
-		if xf.origin.z > -1.0:
-			xf.origin.z -= COLUMN_LENGTH - 3.0
-		# Slight orbital drift — living exterior flow.
-		var ang := atan2(xf.origin.y, xf.origin.x) + delta * 0.15
-		var r := Vector2(xf.origin.x, xf.origin.y).length()
-		xf.origin.x = cos(ang) * r
-		xf.origin.y = sin(ang) * r
+		xf.origin.z += scroll_speed * delta * _molecule_speeds[i] * 0.55
+		if xf.origin.z > -2.0:
+			xf.origin.z -= COLUMN_LENGTH - 6.0
+		xf.origin.x += sin(_elapsed * 1.4 + float(i)) * delta * 0.15
 		mm.set_instance_transform(i, xf)
 
-
-func _animate_bands(delta: float) -> void:
-	for i in _band_ribbons.size():
-		var band := _band_ribbons[i]
-		band.position.z += band_speed * delta * (0.7 + float(i) * 0.15)
-		if band.position.z > -2.0:
-			band.position.z -= COLUMN_LENGTH - 8.0
-		var mat := band.material_override as StandardMaterial3D
-		if mat:
-			mat.emission_energy_multiplier = 1.2 + sin(_elapsed * 2.0 + float(i)) * 0.9
+	# Drift named clusters toward camera (positive Z).
+	for child in get_children():
+		if child is Node3D and str(child.name).begins_with("MoleculeCluster_"):
+			var n := child as Node3D
+			n.position.z += scroll_speed * delta * 0.5
+			if n.position.z > -2.0:
+				n.position.z -= COLUMN_LENGTH - 10.0
 
 
 func _update_sector() -> void:
-	# Camera sits near z≈0 looking down -Z; advance sector by elapsed as proxy for distance.
 	var dist_proxy := fmod(_elapsed * scroll_speed, COLUMN_LENGTH)
 	var next := 0
 	if dist_proxy > COLUMN_LENGTH * 0.66:
@@ -390,11 +504,11 @@ func _apply_sector(idx: int) -> void:
 	var env := _world_env.environment
 	match idx:
 		0:
-			env.fog_light_color = Color(0.2, 0.45, 0.7)
-			env.fog_density = 0.016
+			env.fog_light_color = Color(0.3, 0.35, 0.55)
+			env.fog_density = 0.012
 		1:
-			env.fog_light_color = Color(0.35, 0.55, 0.85)
-			env.fog_density = 0.022
+			env.fog_light_color = Color(0.4, 0.28, 0.55)
+			env.fog_density = 0.016
 		2:
-			env.fog_light_color = Color(0.55, 0.3, 0.75)
-			env.fog_density = 0.028
+			env.fog_light_color = Color(0.45, 0.35, 0.65)
+			env.fog_density = 0.02

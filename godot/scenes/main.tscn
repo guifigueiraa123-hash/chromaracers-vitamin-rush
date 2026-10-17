@@ -8,17 +8,22 @@ script = ExtResource("1_main")
 
 [node name="ColumnEnvironment" parent="." instance=ExtResource("2_col")]
 
+[node name="Vita" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -3.05, 1.2)
+
 [node name="Camera3D" type="Camera3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.4, 4.5)
-fov = 72.0
+transform = Transform3D(1, 0, 0, 0, 0.95, 0.312, 0, -0.312, 0.95, 0, -1.2, 4.4)
+fov = 68.0
 current = true
+near = 0.08
+far = 120.0
 
 [node name="UI" type="CanvasLayer" parent="."]
 
 [node name="SectorLabel" type="Label" parent="UI"]
 offset_left = 24.0
 offset_top = 20.0
-offset_right = 720.0
+offset_right = 820.0
 offset_bottom = 56.0
 theme_override_colors/font_color = Color(0.55, 0.95, 1, 1)
 theme_override_font_sizes/font_size = 22
@@ -27,8 +32,8 @@ text = "SECTOR 1 — INTRODUÇÃO"
 [node name="Hint" type="Label" parent="UI"]
 offset_left = 24.0
 offset_top = 52.0
-offset_right = 900.0
+offset_right = 980.0
 offset_bottom = 84.0
-theme_override_colors/font_color = Color(0.65, 0.75, 0.85, 0.85)
+theme_override_colors/font_color = Color(0.7, 0.78, 0.9, 0.85)
 theme_override_font_sizes/font_size = 14
-text = "Van Deemter glass tunnel — silica coat · exterior multipath flow · dynamic sectors"
+text = "Visual Target — purple silica · blue mobile phase · Vita · lab rings"
