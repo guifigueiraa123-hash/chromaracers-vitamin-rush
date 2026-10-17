@@ -4,7 +4,7 @@
 
 | Runtime | Location | Notes |
 |---------|----------|--------|
-| **Three.js web race** (shipping) | `index.html`, `assets/main.js` | Do not replace with Babylon/PlayCanvas unless asked |
+| **Three.js web race** (shipping) | `index.html`, `assets/main.js` | Do not replace with Babylon/PlayCanvas/Phaser unless asked |
 | **Godot 4** (optional) | `godot/` when scaffolded | Separate from shipping race |
 
 ## Game studio skills (CCGS)
@@ -29,6 +29,7 @@ Prefer skill **`game-studio`**, then the matching `ccgs-*` skill. Default rigor:
 |-------|----------|
 | `babylonjs` | https://github.com/BabylonJS/Babylon.js |
 | `playcanvas` | https://github.com/playcanvas/engine |
+| `phaser` | https://github.com/phaserjs/phaser |
 | `bullet3` | https://github.com/bulletphysics/bullet3 |
 | `magictools` | https://github.com/ellisonleao/magictools |
 | `spritecook-org` | https://github.com/SpriteCook |

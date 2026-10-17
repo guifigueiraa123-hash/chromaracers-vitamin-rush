@@ -52,7 +52,8 @@ Do **not** migrate the race to Babylon.js or replace Three.js unless the user ex
 
 - `babylonjs` — Babylon.js engine reference (not the shipping runtime)
 - `playcanvas` — PlayCanvas WebGL2/WebGPU engine reference
+- `phaser` — Phaser 3 HTML5 2D framework reference
 - `bullet3` — Bullet Physics / PyBullet reference
-- `magictools` — curated game-dev resource list
+- `magictools` — curated game-dev resource list (ellisonleao/magictools)
 - `spritecook-org` — SpriteCook GitHub org map (plugins, MCP, assets)
 - `spritecook` — sprite/tileset generation (when installed)
