@@ -24,3 +24,11 @@ godot --headless --path godot --quit-after 2
 ```
 
 Shipping do Chromaracers continua em Three.js; isto é lab / preview paralelo.
+
+## Ver no celular (Web export)
+
+Build em `godot-web/` (HTML5 / WASM).
+
+Enquanto o agente estiver ligado, tunnel temporário pode ser usado.
+Após merge em `main` + GitHub Pages:  
+`https://guifigueiraa123-hash.github.io/chromaracers-vitamin-rush/godot-web/`
