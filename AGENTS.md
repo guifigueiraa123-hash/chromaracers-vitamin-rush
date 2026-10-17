@@ -34,9 +34,6 @@ Prefer skill **`game-studio`**, then the matching `ccgs-*` skill. Default rigor:
 | `magictools` | https://github.com/ellisonleao/magictools |
 | `spritecook-org` | https://github.com/SpriteCook |
 | `open-higgsfield` | https://github.com/Autom8AI/Open-Higgsfield-AI |
-| `modly` | https://github.com/lightningpixel/modly |
-| `stable-dreamfusion` | https://github.com/ashawkey/stable-dreamfusion |
-| `hunyuan3d` | https://github.com/Tencent-Hunyuan/Hunyuan3D-2.1 |
 
 Offline mirrors: `docs/references/`.
 
@@ -50,10 +47,4 @@ Offline mirrors: `docs/references/`.
 - Open Higgsfield AI (Muapi BYOK): skill `open-higgsfield`
 - Commercial Cursor **Higgsfield** MCP is separate and needs auth — do not use unless asked
 
-## Local 3D mesh generation (user GPU)
-
-- Modly (image→mesh desktop app): skill `modly`
-- Stable-Dreamfusion (text/image→3D research; WIP): skill `stable-dreamfusion`
-- Hunyuan3D-2.1 (image→3D + PBR; community license / territory limits): skill `hunyuan3d`
-- Prefer threestudio for newer DreamFusion-style pipelines; do not run these in Cloud Agents without a suitable GPU
-- Review Hunyuan community license (no EU/UK/KR; >1M MAU needs Tencent commercial terms) before shipping assets
+Local GPU image→3D tools (Modly / DreamFusion / Hunyuan3D) were removed — they need a large local GPU and do not run in Cloud Agents.
