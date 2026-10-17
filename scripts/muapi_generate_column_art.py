@@ -148,11 +148,25 @@ def submit_and_poll(key: str, endpoint: str, prompt: str, aspect_ratio: str) -> 
         if status in ("completed", "succeeded", "success"):
             url = (
                 (data.get("outputs") or [None])[0]
+                or (data.get("images") or [None])[0]
                 or data.get("url")
                 or (data.get("output") or {}).get("url")
             )
             if not url:
                 raise RuntimeError(f"Completed but no url: {json.dumps(data)[:200]}")
+            # Zero-credit accounts return stock marketing AVIFs (not real gens).
+            cost = data.get("cost") or {}
+            credits = cost.get("amount_credits") or cost.get("amount_usd") or 0
+            placeholder = any(
+                marker in str(url)
+                for marker in ("/homepage/", "/webassets/", "videomodels/")
+            )
+            if placeholder or (credits == 0 and str(url).endswith(".avif")):
+                raise RuntimeError(
+                    "Muapi returned a demo placeholder (0 credits). "
+                    "Add credits at https://muapi.ai then re-run. "
+                    f"url={url} cost={cost}"
+                )
             return url
         if status in ("failed", "error"):
             raise RuntimeError(f"Generation failed: {data.get('error') or data}")
