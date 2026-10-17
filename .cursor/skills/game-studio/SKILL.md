@@ -60,3 +60,4 @@ Do **not** migrate the race to Babylon.js or replace Three.js unless the user ex
 - `open-higgsfield` — open-source Higgsfield-style image/video studio (Muapi BYOK)
 - `modly` — local GPU image→3D mesh desktop app (Lightning Pixel)
 - `stable-dreamfusion` — local text/image→3D research (NeRF + SD; WIP)
+- `hunyuan3d` — Tencent Hunyuan3D-2.1 image→3D + PBR (community license)
