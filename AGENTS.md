@@ -4,7 +4,7 @@
 
 | Runtime | Location | Notes |
 |---------|----------|--------|
-| **Three.js web race** (shipping) | `index.html`, `assets/main.js` | Do not replace with Babylon/PlayCanvas unless asked |
+| **Three.js web race** (shipping) | `index.html`, `assets/main.js` | Do not replace with Babylon/PlayCanvas/Phaser unless asked |
 | **Godot 4** (optional) | `godot/` when scaffolded | Separate from shipping race |
 
 ## Game studio skills (CCGS)

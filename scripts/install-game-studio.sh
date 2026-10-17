@@ -5,7 +5,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 USER_SKILLS="${HOME}/.cursor/skills"
 PROJECT_SKILLS="${ROOT}/.cursor/skills"
-REF_RE='^(ccgs-|game-studio|babylonjs|magictools|playcanvas|bullet3|spritecook-org)'
+REF_RE='^(ccgs-|game-studio|babylonjs|magictools|playcanvas|phaser|bullet3|spritecook-org)'
 
 mkdir -p "${USER_SKILLS}"
 
