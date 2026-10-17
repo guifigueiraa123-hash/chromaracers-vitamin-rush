@@ -36,6 +36,7 @@ Prefer skill **`game-studio`**, then the matching `ccgs-*` skill. Default rigor:
 | `open-higgsfield` | https://github.com/Autom8AI/Open-Higgsfield-AI |
 | `modly` | https://github.com/lightningpixel/modly |
 | `stable-dreamfusion` | https://github.com/ashawkey/stable-dreamfusion |
+| `hunyuan3d` | https://github.com/Tencent-Hunyuan/Hunyuan3D-2.1 |
 
 Offline mirrors: `docs/references/`.
 
@@ -53,4 +54,6 @@ Offline mirrors: `docs/references/`.
 
 - Modly (image→mesh desktop app): skill `modly`
 - Stable-Dreamfusion (text/image→3D research; WIP): skill `stable-dreamfusion`
-- Prefer threestudio for newer DreamFusion-style pipelines; do not train these in Cloud Agents without a GPU
+- Hunyuan3D-2.1 (image→3D + PBR; community license / territory limits): skill `hunyuan3d`
+- Prefer threestudio for newer DreamFusion-style pipelines; do not run these in Cloud Agents without a suitable GPU
+- Review Hunyuan community license (no EU/UK/KR; >1M MAU needs Tencent commercial terms) before shipping assets
