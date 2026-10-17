@@ -33,6 +33,7 @@ Prefer skill **`game-studio`**, then the matching `ccgs-*` skill. Default rigor:
 | `bullet3` | https://github.com/bulletphysics/bullet3 |
 | `magictools` | https://github.com/ellisonleao/magictools |
 | `spritecook-org` | https://github.com/SpriteCook |
+| `open-higgsfield` | https://github.com/Autom8AI/Open-Higgsfield-AI |
 
 Offline mirrors: `docs/references/`.
 
@@ -40,3 +41,8 @@ Offline mirrors: `docs/references/`.
 
 - Org map: skill `spritecook-org`
 - Generation workflows: skill `spritecook` when present (see SpriteCook install PR / `scripts/install-spritecook.sh`)
+
+## Concept art / cinema stills
+
+- Open Higgsfield AI (Muapi BYOK): skill `open-higgsfield`
+- Commercial Cursor **Higgsfield** MCP is separate and needs auth — do not use unless asked

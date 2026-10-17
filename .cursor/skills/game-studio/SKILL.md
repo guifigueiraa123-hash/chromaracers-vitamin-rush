@@ -57,3 +57,4 @@ Do **not** migrate the race to Babylon.js or replace Three.js unless the user ex
 - `magictools` — curated game-dev resource list (ellisonleao/magictools)
 - `spritecook-org` — SpriteCook GitHub org map (plugins, MCP, assets)
 - `spritecook` — sprite/tileset generation (when installed)
+- `open-higgsfield` — open-source Higgsfield-style image/video studio (Muapi BYOK)
