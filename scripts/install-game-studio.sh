@@ -5,7 +5,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 USER_SKILLS="${HOME}/.cursor/skills"
 PROJECT_SKILLS="${ROOT}/.cursor/skills"
-REF_RE='^(ccgs-|game-studio|babylonjs|magictools|playcanvas|phaser|bullet3|spritecook-org|open-higgsfield)'
+REF_RE='^(ccgs-|game-studio|babylonjs|magictools|playcanvas|phaser|bullet3|spritecook-org|open-higgsfield|modly|stable-dreamfusion)'
 
 mkdir -p "${USER_SKILLS}"
 
@@ -38,12 +38,14 @@ copy_named "phaser"
 copy_named "bullet3"
 copy_named "spritecook-org"
 copy_named "open-higgsfield"
+copy_named "modly"
+copy_named "stable-dreamfusion"
 
 echo "  [ok] Installed to ${USER_SKILLS}:"
-ls -1 "${USER_SKILLS}" | grep -E "${REF_RE}" | sed 's/^/    - /' | head -24
+ls -1 "${USER_SKILLS}" | grep -E "${REF_RE}" | sed 's/^/    - /' | head -28
 echo "    ... ($(ls -1 "${USER_SKILLS}" | grep -cE "${REF_RE}") skills)"
 echo ""
 echo "  Entry skill: game-studio"
-echo "  Engine refs: babylonjs, playcanvas, phaser, bullet3, magictools, spritecook-org, open-higgsfield"
+echo "  Engine refs: babylonjs, playcanvas, phaser, bullet3, magictools, spritecook-org, open-higgsfield, modly, stable-dreamfusion"
 echo "  Vendor: .cursor/vendor/claude-code-game-studios/"
 echo ""

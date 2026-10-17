@@ -58,3 +58,5 @@ Do **not** migrate the race to Babylon.js or replace Three.js unless the user ex
 - `spritecook-org` — SpriteCook GitHub org map (plugins, MCP, assets)
 - `spritecook` — sprite/tileset generation (when installed)
 - `open-higgsfield` — open-source Higgsfield-style image/video studio (Muapi BYOK)
+- `modly` — local GPU image→3D mesh desktop app (Lightning Pixel)
+- `stable-dreamfusion` — local text/image→3D research (NeRF + SD; WIP)

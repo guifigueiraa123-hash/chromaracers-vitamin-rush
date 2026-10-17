@@ -34,6 +34,8 @@ Prefer skill **`game-studio`**, then the matching `ccgs-*` skill. Default rigor:
 | `magictools` | https://github.com/ellisonleao/magictools |
 | `spritecook-org` | https://github.com/SpriteCook |
 | `open-higgsfield` | https://github.com/Autom8AI/Open-Higgsfield-AI |
+| `modly` | https://github.com/lightningpixel/modly |
+| `stable-dreamfusion` | https://github.com/ashawkey/stable-dreamfusion |
 
 Offline mirrors: `docs/references/`.
 
@@ -46,3 +48,9 @@ Offline mirrors: `docs/references/`.
 
 - Open Higgsfield AI (Muapi BYOK): skill `open-higgsfield`
 - Commercial Cursor **Higgsfield** MCP is separate and needs auth — do not use unless asked
+
+## Local 3D mesh generation (user GPU)
+
+- Modly (image→mesh desktop app): skill `modly`
+- Stable-Dreamfusion (text/image→3D research; WIP): skill `stable-dreamfusion`
+- Prefer threestudio for newer DreamFusion-style pipelines; do not train these in Cloud Agents without a GPU
