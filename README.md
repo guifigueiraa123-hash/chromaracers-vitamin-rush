@@ -52,3 +52,15 @@ const GAME_CONFIG = {
 
 - Desktop: ← → / A D · Espaço (item/boost) · R
 - Mobile: swipe + botões touch
+
+## Pixel art (Aseprite AI Artist)
+
+Agents can draw/animate sprites in Aseprite via [aseprite-ai-artist](https://github.com/with-pebbly/aseprite-ai-artist):
+
+```bash
+bash scripts/install-aseprite-ai-artist.sh
+npx @pebbly/aseprite-ai-artist install-extension   # local Aseprite 1.3+
+bash scripts/aseprite-ai-artist-smoke.sh
+```
+
+Mapa: `docs/references/aseprite-ai-artist.md`. MCP: `.cursor/mcp.json`.
