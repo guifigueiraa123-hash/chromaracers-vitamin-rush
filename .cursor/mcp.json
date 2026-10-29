@@ -2,6 +2,14 @@
   "mcpServers": {
     "spritecook": {
       "url": "https://mcp.spritecook.ai/mcp/claude"
+    },
+    "aseprite-ai-artist": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@pebbly/aseprite-ai-artist@latest",
+        "serve"
+      ]
     }
   }
 }
