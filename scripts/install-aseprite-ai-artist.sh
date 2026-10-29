@@ -21,14 +21,29 @@ if [[ "${NODE_MAJOR}" -lt 22 ]]; then
   echo "  [warn] Node ${NODE_MAJOR} detected; upstream requires Node 22.6+"
 fi
 
-npx -y @pebbly/aseprite-ai-artist@latest install cursor --project --agents --dir "$ROOT"
+# Project-scoped configs for every supported client (codex, gemini, cursor, …).
+# Equivalent to: npx @pebbly/aseprite-ai-artist install codex  # or gemini, cursor, --all
+npx -y @pebbly/aseprite-ai-artist@latest install --all --project --agents --dir "$ROOT"
 
+# Drop installer backups; they are machine-local noise in git status.
+find "$ROOT" -maxdepth 3 -name '*.bak-*' -type f -print -delete 2>/dev/null || true
+
+echo ""
+echo "  Wrote project MCP configs:"
+echo "    .cursor/mcp.json   (Cursor — keeps SpriteCook)"
+echo "    .codex/config.toml (Codex)"
+echo "    .gemini/settings.json"
+echo "    .mcp.json          (Claude Code project)"
+echo "    .vscode/mcp.json"
+echo "    .opencode/opencode.json"
+echo "    AGENTS.md"
+echo "  Windsurf is user-scope only (~/.codeium/windsurf/mcp_config.json)."
 echo ""
 echo "  Next (on a machine with Aseprite 1.3+):"
 echo "    npx @pebbly/aseprite-ai-artist install-extension"
-echo "    # restart Aseprite, then reload Cursor MCP"
+echo "    # restart Aseprite, then reload the agent MCP"
 echo "    bash scripts/aseprite-ai-artist-smoke.sh"
 echo ""
 echo "  Headless (CI / no window):"
-echo "    npx @pebbly/aseprite-ai-artist install cursor --project --headless --aseprite /path/to/aseprite"
+echo "    npx @pebbly/aseprite-ai-artist install --all --project --headless --aseprite /path/to/aseprite"
 echo ""

@@ -12,37 +12,35 @@ echo ""
 echo "  Aseprite AI Artist smoke"
 echo ""
 
-if [[ ! -f .cursor/mcp.json ]]; then
-  echo "  [fail] missing .cursor/mcp.json"
-  FAIL=1
-else
-  if grep -q '"aseprite-ai-artist"' .cursor/mcp.json; then
-    echo "  [ok] .cursor/mcp.json has aseprite-ai-artist"
+check_file_has() {
+  local file="$1"
+  local needle="$2"
+  if [[ ! -f "$file" ]]; then
+    echo "  [fail] missing $file"
+    FAIL=1
+    return
+  fi
+  if grep -q "$needle" "$file"; then
+    echo "  [ok] $file"
   else
-    echo "  [fail] .cursor/mcp.json missing aseprite-ai-artist server"
+    echo "  [fail] $file missing $needle"
     FAIL=1
   fi
-fi
+}
 
-if [[ -f AGENTS.md ]] && grep -q 'aseprite-ai-artist:start' AGENTS.md; then
-  echo "  [ok] AGENTS.md has aseprite-ai-artist section"
-else
-  echo "  [fail] AGENTS.md missing aseprite-ai-artist markers"
-  FAIL=1
-fi
-
-if [[ -f docs/references/aseprite-ai-artist.md ]]; then
-  echo "  [ok] docs/references/aseprite-ai-artist.md present"
-else
-  echo "  [fail] missing Chromaracers mapping doc"
-  FAIL=1
-fi
+check_file_has .cursor/mcp.json 'aseprite-ai-artist'
+check_file_has .codex/config.toml 'aseprite-ai-artist'
+check_file_has .gemini/settings.json 'aseprite-ai-artist'
+check_file_has .mcp.json 'aseprite-ai-artist'
+check_file_has .vscode/mcp.json 'aseprite-ai-artist'
+check_file_has .opencode/opencode.json 'aseprite-ai-artist'
+check_file_has AGENTS.md 'aseprite-ai-artist:start'
+check_file_has docs/references/aseprite-ai-artist.md 'aseprite:studio'
 
 echo ""
-echo "  --- doctor ---"
-npx -y @pebbly/aseprite-ai-artist@latest doctor || true
-echo "  --------------"
+echo "  Tip: run doctor separately — npx @pebbly/aseprite-ai-artist doctor"
 echo ""
+
 
 if [[ "$FAIL" -ne 0 ]]; then
   echo "  Smoke: FAIL (project wiring)"

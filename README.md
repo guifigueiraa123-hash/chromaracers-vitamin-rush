@@ -59,8 +59,10 @@ Agents can draw/animate sprites in Aseprite via [aseprite-ai-artist](https://git
 
 ```bash
 bash scripts/install-aseprite-ai-artist.sh
+# npx @pebbly/aseprite-ai-artist install codex  # or gemini, cursor, --all
 npx @pebbly/aseprite-ai-artist install-extension   # local Aseprite 1.3+
 bash scripts/aseprite-ai-artist-smoke.sh
+npx @pebbly/aseprite-ai-artist doctor
 ```
 
-Mapa: `docs/references/aseprite-ai-artist.md`. MCP: `.cursor/mcp.json`.
+Mapa: `docs/references/aseprite-ai-artist.md`. MCP: `.cursor/mcp.json` (+ Codex/Gemini/VS Code/OpenCode project configs).

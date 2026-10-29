@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "aseprite-ai-artist": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@pebbly/aseprite-ai-artist@latest",
+        "serve"
+      ]
+    }
+  }
+}

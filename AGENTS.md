@@ -26,10 +26,15 @@ Upstream: [with-pebbly/aseprite-ai-artist](https://github.com/with-pebbly/asepri
 
 ```bash
 bash scripts/install-aseprite-ai-artist.sh
-# or: npx @pebbly/aseprite-ai-artist install cursor --project --agents
+# or: npx @pebbly/aseprite-ai-artist install --all --project --agents
+#     npx @pebbly/aseprite-ai-artist install codex   # or gemini, cursor, --all
 npx @pebbly/aseprite-ai-artist install-extension   # then restart Aseprite
 bash scripts/aseprite-ai-artist-smoke.sh
+npx @pebbly/aseprite-ai-artist doctor
 ```
+
+Project MCP configs: `.cursor/mcp.json`, `.codex/config.toml`, `.gemini/settings.json`, `.mcp.json`, `.vscode/mcp.json`, `.opencode/opencode.json`.
+
 
 Requires **Aseprite 1.3+** and **Node 22.6+**. Cloud Agents without Aseprite cannot draw; report `preflight` failure instead of editing PNG/ASE files on disk.
 

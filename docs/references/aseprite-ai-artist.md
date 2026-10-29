@@ -10,11 +10,17 @@ MCP server + workflows so a coding agent **paints inside Aseprite** (live window
 
 | Piece | Location |
 |-------|----------|
-| MCP | `.cursor/mcp.json` → `aseprite-ai-artist` (`npx … serve`) |
+| Cursor MCP | `.cursor/mcp.json` → `aseprite-ai-artist` (`npx … serve`) |
+| Codex | `.codex/config.toml` |
+| Gemini CLI | `.gemini/settings.json` |
+| Claude Code (project) | `.mcp.json` |
+| VS Code | `.vscode/mcp.json` |
+| OpenCode | `.opencode/opencode.json` |
 | Agent rules | `AGENTS.md` (official block + Chromaracers notes) |
 | Cursor skill | `.cursor/skills/aseprite/SKILL.md` |
-| Install | `bash scripts/install-aseprite-ai-artist.sh` |
+| Install | `bash scripts/install-aseprite-ai-artist.sh` (`install --all --project`) |
 | Smoke | `bash scripts/aseprite-ai-artist-smoke.sh` |
+| Doctor | `npx @pebbly/aseprite-ai-artist doctor` |
 
 ## Workflows (MCP prompts / `skill://`)
 

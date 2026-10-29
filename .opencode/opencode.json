@@ -1,0 +1,18 @@
+{
+  "mcp": {
+    "servers": {
+      "aseprite-ai-artist": {
+        "type": "local",
+        "command": [
+          "npx",
+          "-y",
+          "@pebbly/aseprite-ai-artist@latest",
+          "serve"
+        ],
+        "environment": {
+          "ASEPRITE_AI_PROMPTS": "0"
+        }
+      }
+    }
+  }
+}
