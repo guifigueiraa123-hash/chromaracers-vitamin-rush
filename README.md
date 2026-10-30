@@ -52,3 +52,15 @@ const GAME_CONFIG = {
 
 - Desktop: ← → / A D · Espaço (item/boost) · R
 - Mobile: swipe + botões touch
+
+## Procedural 3D (img2threejs)
+
+Agents can rebuild a reference image as **code-only Three.js** via [img2threejs](https://github.com/img2threejs/img2threejs):
+
+```bash
+bash scripts/install-img2threejs.sh
+bash scripts/img2threejs-smoke.sh
+npx --yes img2threejs@latest doctor
+```
+
+Mapa: `docs/references/img2threejs.md`. Skill Cursor: `.cursor/skills/img2threejs` (symlink após install).

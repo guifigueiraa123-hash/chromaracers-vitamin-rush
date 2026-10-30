@@ -1,0 +1,5 @@
+# img2threejs: full skill is linked from the managed release (see scripts/install-img2threejs.sh)
+.cursor/skills/img2threejs
+
+# Local reconstruction checklist / evidence (created by forge/state.py)
+.img2threejs/
