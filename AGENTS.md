@@ -34,8 +34,24 @@ Prefer skill **`game-studio`**, then the matching `ccgs-*` skill. Default rigor:
 | `magictools` | https://github.com/ellisonleao/magictools |
 | `spritecook-org` | https://github.com/SpriteCook |
 | `open-higgsfield` | https://github.com/Autom8AI/Open-Higgsfield-AI |
+| `awesome-gamedev-skills` | https://github.com/gamedev-skills/awesome-gamedev-agent-skills |
 
 Offline mirrors: `docs/references/`.
+
+## Awesome GameDev Agent Skills (subset)
+
+From [gamedev-skills/awesome-gamedev-agent-skills](https://github.com/gamedev-skills/awesome-gamedev-agent-skills) (Apache-2.0). Full catalog is 77 skills; Chromaracers vendors only what helps this project:
+
+| Skill | Role |
+|-------|------|
+| `router` | Start here — picks engine/task skills |
+| `threejs-scene-setup` / `threejs-materials-lighting` / `threejs-gltf-loading` | Shipping Three.js race |
+| `create-game-assets` | Art-direction → asset families |
+| `shader-programming` | Shader concepts |
+| `godot-3d-essentials` / `godot-gdscript` / `godot-export` / `godot-shaders` | Optional Godot lab |
+| `phaser-core` | 2D reference only |
+
+Umbrella map: skill `awesome-gamedev-skills`. Prefer `router` before ad-hoc engine skills.
 
 ## SpriteCook generation
 
