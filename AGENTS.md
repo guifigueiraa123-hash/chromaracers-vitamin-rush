@@ -34,8 +34,19 @@ Prefer skill **`game-studio`**, then the matching `ccgs-*` skill. Default rigor:
 | `magictools` | https://github.com/ellisonleao/magictools |
 | `spritecook-org` | https://github.com/SpriteCook |
 | `open-higgsfield` | https://github.com/Autom8AI/Open-Higgsfield-AI |
+| `awesome-gamedev-skills` | https://github.com/gamedev-skills/awesome-gamedev-agent-skills |
 
 Offline mirrors: `docs/references/`.
+
+## Awesome GameDev Agent Skills (full catalog)
+
+From [gamedev-skills/awesome-gamedev-agent-skills](https://github.com/gamedev-skills/awesome-gamedev-agent-skills) (Apache-2.0).
+
+- **77 skills + `router`** vendored under `.cursor/skills/`
+- Name list: `docs/references/awesome-gamedev-skills-list.txt`
+- Umbrella map: skill `awesome-gamedev-skills`
+- Prefer **`router`** first — it picks engine/task skills (Three.js, Godot, Unity, Unreal, genres, etc.)
+- Shipping Chromaracers race remains **Three.js**; do not migrate to Unity/Unreal/Roblox unless asked
 
 ## SpriteCook generation
 

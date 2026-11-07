@@ -58,3 +58,5 @@ Do **not** migrate the race to Babylon.js or replace Three.js unless the user ex
 - `spritecook-org` — SpriteCook GitHub org map (plugins, MCP, assets)
 - `spritecook` — sprite/tileset generation (when installed)
 - `open-higgsfield` — open-source Higgsfield-style image/video studio (Muapi BYOK)
+- `awesome-gamedev-skills` — full catalog map (gamedev-skills/awesome-gamedev-agent-skills)
+- `router` — gamedev skill dispatcher (prefer first; loads threejs-/godot-/genre skills as needed)
