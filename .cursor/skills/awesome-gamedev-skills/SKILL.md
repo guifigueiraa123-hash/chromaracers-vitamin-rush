@@ -1,53 +1,45 @@
 ---
 name: awesome-gamedev-skills
 description: >-
-  Curated Chromaracers subset of gamedev-skills/awesome-gamedev-agent-skills
-  (77 Agent Skills + router). Use when routing game tasks, Three.js scene work,
-  Godot lab, asset art workflow, or shaders. Prefer router first.
+  Full catalog of gamedev-skills/awesome-gamedev-agent-skills (77 skills +
+  router) vendored under .cursor/skills/. Use router first to pick engine/task
+  skills. Apache-2.0 upstream.
 ---
 
-# Awesome GameDev Agent Skills (Chromaracers subset)
+# Awesome GameDev Agent Skills (full catalog)
 
 Upstream: [gamedev-skills/awesome-gamedev-agent-skills](https://github.com/gamedev-skills/awesome-gamedev-agent-skills) (Apache-2.0)
 
-Full catalog: 77 skills + a **router** that detects engine/task. This repo vendors only skills that help Chromaracers — not Unity/Unreal/Roblox/etc.
+**77 skills + `router`** are installed flat under `.cursor/skills/` (names are globally unique). Name list: `docs/references/awesome-gamedev-skills-list.txt`.
 
-## Installed here (under `.cursor/skills/`)
+## How to use
 
-| Skill | Role |
-|-------|------|
-| `router` | Dispatch — start here for gamedev requests |
-| `threejs-scene-setup` | Scene / camera / renderer / loop (shipping race) |
-| `threejs-materials-lighting` | Materials & lights |
-| `threejs-gltf-loading` | glTF/GLB import |
-| `create-game-assets` | Art direction → asset families workflow |
-| `shader-programming` | Cross-engine shader concepts |
-| `phaser-core` | Phaser 3 core (2D reference; do not replace Three.js race) |
-| `godot-3d-essentials` | Godot 3D lab |
-| `godot-gdscript` | Typed GDScript |
-| `godot-export` | Export / Web |
-| `godot-shaders` | Godot shaders |
+1. Prefer skill **`router`** at the start of a gamedev request — it detects engine + task and names the minimal skill set.
+2. Then read the skills it names (e.g. `threejs-scene-setup`, `godot-gdscript`, `platformer`).
+3. Chromaracers shipping runtime remains **Three.js**; Godot is optional lab. Unity/Unreal/Roblox skills are available for reference/prototypes only — do not migrate the race unless the user asks.
 
-Umbrella skill name: **`awesome-gamedev-skills`** (this file).
+## Categories (upstream)
 
-## Chromaracers policy
+| Group | Examples |
+|-------|----------|
+| Router | `router` |
+| Web | `threejs-*`, `phaser-*`, `pixijs-rendering` |
+| Godot | `godot-*` |
+| Unity / Unreal | `unity-*`, `unreal-*` |
+| Other engines | `bevy-ecs`, `defold-core`, `love2d-core`, `pygame-core`, `ebitengine-game`, `roblox-*` |
+| Disciplines | `create-game-assets`, `shader-programming`, `save-systems`, `game-feel`, … |
+| Genres | `platformer`, `roguelike`, `rpg`, … |
+| Workflows | `game-jam`, `itch-publish`, `steam-publish`, `prototype-fast` |
 
-- **Shipping runtime:** Three.js (`index.html`, `assets/main.js`). Prefer `threejs-*` + `router`.
-- **Godot lab:** optional; use `godot-*` skills when working under `godot/`.
-- Do **not** install the full 77 into this repo by default (keeps noise down). To refresh subset:
+## Refresh from upstream
 
 ```bash
-npx skills add gamedev-skills/awesome-gamedev-agent-skills \
-  --skill router \
-  --skill threejs-scene-setup --skill threejs-materials-lighting --skill threejs-gltf-loading \
-  --skill create-game-assets --skill shader-programming \
-  --skill phaser-core \
-  --skill godot-3d-essentials --skill godot-gdscript --skill godot-export --skill godot-shaders \
-  -a cursor -y
+npx skills add gamedev-skills/awesome-gamedev-agent-skills -a cursor -y
+# or re-copy skills/*/ and router/ into .cursor/skills/
 ```
 
-Or re-copy from upstream into `.cursor/skills/` as in the install PR.
+## Offline
 
-## Offline note
-
-`docs/references/awesome-gamedev-skills.md` · license snapshot `docs/references/awesome-gamedev-skills-LICENSE`
+- `docs/references/awesome-gamedev-skills.md`
+- `docs/references/awesome-gamedev-skills-LICENSE`
+- `docs/references/awesome-gamedev-skills-list.txt`

@@ -38,20 +38,15 @@ Prefer skill **`game-studio`**, then the matching `ccgs-*` skill. Default rigor:
 
 Offline mirrors: `docs/references/`.
 
-## Awesome GameDev Agent Skills (subset)
+## Awesome GameDev Agent Skills (full catalog)
 
-From [gamedev-skills/awesome-gamedev-agent-skills](https://github.com/gamedev-skills/awesome-gamedev-agent-skills) (Apache-2.0). Full catalog is 77 skills; Chromaracers vendors only what helps this project:
+From [gamedev-skills/awesome-gamedev-agent-skills](https://github.com/gamedev-skills/awesome-gamedev-agent-skills) (Apache-2.0).
 
-| Skill | Role |
-|-------|------|
-| `router` | Start here — picks engine/task skills |
-| `threejs-scene-setup` / `threejs-materials-lighting` / `threejs-gltf-loading` | Shipping Three.js race |
-| `create-game-assets` | Art-direction → asset families |
-| `shader-programming` | Shader concepts |
-| `godot-3d-essentials` / `godot-gdscript` / `godot-export` / `godot-shaders` | Optional Godot lab |
-| `phaser-core` | 2D reference only |
-
-Umbrella map: skill `awesome-gamedev-skills`. Prefer `router` before ad-hoc engine skills.
+- **77 skills + `router`** vendored under `.cursor/skills/`
+- Name list: `docs/references/awesome-gamedev-skills-list.txt`
+- Umbrella map: skill `awesome-gamedev-skills`
+- Prefer **`router`** first — it picks engine/task skills (Three.js, Godot, Unity, Unreal, genres, etc.)
+- Shipping Chromaracers race remains **Three.js**; do not migrate to Unity/Unreal/Roblox unless asked
 
 ## SpriteCook generation
 
